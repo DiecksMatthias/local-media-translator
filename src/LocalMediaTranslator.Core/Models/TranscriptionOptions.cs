@@ -1,4 +1,4 @@
-namespace LocalMediaTranslator.Core;
+namespace LocalMediaTranslator.Core.Models;
 
 public class TranscriptionOptions {
     public string Language { get; set; } = "ja";

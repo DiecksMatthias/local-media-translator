@@ -1,6 +1,4 @@
-using LocalMediaTranslator.Core.Models;
-
-namespace LocalMediaTranslator.Core;
+namespace LocalMediaTranslator.Core.Models;
 
 public class SubtitleTrack {
     public required string SourceFileName { get; set; }

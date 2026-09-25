@@ -1,4 +1,4 @@
-namespace LocalMediaTranslator.Core;
+namespace LocalMediaTranslator.Core.Models;
 
 public class AudioExtrationOptions {
     public int SampleRate { get; set; } = 16000;
