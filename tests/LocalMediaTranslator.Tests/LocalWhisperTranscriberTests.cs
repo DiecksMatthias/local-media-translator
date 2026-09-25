@@ -19,12 +19,17 @@ public class LocalWhisperTranscriberTests {
     [Fact]
     public async Task AudioTranscribe_NonExistingModelFile_ThrowsFileNotFoundException() {
         var tempAudioFile = Path.GetTempFileName();
-        var options = new TranscriptionOptions { ModelPath = "non_existing_model.bin" };
-        await Assert.ThrowsAsync<FileNotFoundException>(async () => {
-            var stream = _transcriber.TranscribeAsync(tempAudioFile, options);
-            await foreach (var _ in stream) {
-                // This should trigger the exception                
-            }
-        });
+        try {
+            var options = new TranscriptionOptions { ModelPath = "non_existing_model.bin" };
+            await Assert.ThrowsAsync<FileNotFoundException>(async () => {
+                var stream = _transcriber.TranscribeAsync(tempAudioFile, options);
+                await foreach (var _ in stream) {
+                    // This should trigger the exception                
+                }
+            });
+        } finally {
+            if (File.Exists(tempAudioFile))
+                File.Delete(tempAudioFile);
+        }
     }
 }
