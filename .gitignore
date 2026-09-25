@@ -484,3 +484,4 @@ $RECYCLE.BIN/
 # Whisper weight files & audio files
 *.bin
 *.wav
+PROJECT_TRACKING.md

@@ -8,7 +8,7 @@ public class SubtitleItem {
     public string? TranslatedText { get; set; }
 
     public TimeSpan Duration => End - Start;
-    public string GetFormattedText(bool dual = false) {
-        throw new NotImplementedException();
-    }
+    public string GetFormattedText(bool dual = false)
+        => dual && !string.IsNullOrWhiteSpace(TranslatedText)
+        ? $"{OriginalText}\n{TranslatedText}" : (TranslatedText ?? OriginalText);
 }
