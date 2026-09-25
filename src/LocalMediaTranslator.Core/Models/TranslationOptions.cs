@@ -1,6 +1,7 @@
 namespace LocalMediaTranslator.Core.Models;
 
 public class TranslationOptions {
+    public string Model { get; set; } = "gpt-4o-mini";
     public string SourceLanguage { get; set; } = "Japanese";
     public string TargetLanguage { get; set; } = "English";
     public int BatchSize { get; set; } = 20;
