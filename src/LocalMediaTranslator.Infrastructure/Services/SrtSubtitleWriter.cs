@@ -6,6 +6,7 @@ using LocalMediaTranslator.Core.Models.Enums;
 namespace LocalMediaTranslator.Infrastructure.Services;
 
 public class SrtSubtitleWriter : ISubtitleWriter {
+    private static readonly Encoding _utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
     public async Task WriteAsync(SubtitleTrack track, Stream outputStream, SubtitleFormat format = SubtitleFormat.Srt, bool dualLanguage = false, CancellationToken cs = default) {
         // Guards
         ArgumentNullException.ThrowIfNull(track);
@@ -15,7 +16,7 @@ public class SrtSubtitleWriter : ISubtitleWriter {
         if (format != SubtitleFormat.Srt)
             throw new NotSupportedException(message: "Wrong Format. Only Srt supported");
 
-        using StreamWriter sw = new StreamWriter(outputStream, encoding: Encoding.UTF8, leaveOpen: true);
+        using StreamWriter sw = new StreamWriter(outputStream, encoding: _utf8NoBom, leaveOpen: true);
         foreach (var subtitleItem in track.Items) {
             await sw.WriteAsync(CreateSrtSegment(subtitleItem, dualLanguage).AsMemory(), cs);
         }
