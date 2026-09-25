@@ -1,0 +1,5 @@
+root = true
+
+[*.cs]
+# Place opening brace on the same line (K&R style)
+csharp_new_line_before_open_brace = none
