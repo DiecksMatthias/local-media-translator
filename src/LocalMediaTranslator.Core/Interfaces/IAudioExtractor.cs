@@ -11,5 +11,5 @@ public interface IAudioExtractor {
     /// <param name="options">Audio sampling and format settings</param>
     /// <param name="cs"></param>
     /// <returns>The path to the generated audio file</returns>
-    Task<string> ExtractAudioAsync(string videoPath, string outputPath, AudioExtrationOptions? options = null, CancellationToken cs = default);
+    Task<string> ExtractAudioAsync(string videoPath, string outputPath, AudioExtractionOptions? options = null, CancellationToken cs = default);
 }
