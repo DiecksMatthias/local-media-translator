@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LocalMediaTranslator.Cli/LocalMediaTranslator.Cli.csproj" />
+    <Project Path="src/LocalMediaTranslator.Core/LocalMediaTranslator.Core.csproj" />
+    <Project Path="src/LocalMediaTranslator.Infrastructure/LocalMediaTranslator.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LocalMediaTranslator.Tests/LocalMediaTranslator.Tests.csproj" />
+  </Folder>
+</Solution>
