@@ -1,4 +1,4 @@
-namespace LocalMediaTranslator.Core.Models;
+namespace LocalMediaTranslator.Core.Models.Enums;
 
 public enum SubtitleFormat {
     Srt,

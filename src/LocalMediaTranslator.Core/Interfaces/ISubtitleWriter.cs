@@ -1,4 +1,5 @@
 using LocalMediaTranslator.Core.Models;
+using LocalMediaTranslator.Core.Models.Enums;
 
 namespace LocalMediaTranslator.Core.Interfaces;
 

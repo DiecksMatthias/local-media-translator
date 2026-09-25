@@ -1,3 +1,5 @@
+using LocalMediaTranslator.Core.Models.Enums;
+
 namespace LocalMediaTranslator.Core.Models;
 
 public class AudioExtrationOptions {
