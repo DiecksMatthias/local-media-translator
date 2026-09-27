@@ -116,8 +116,25 @@ public class GraphQlMediaClient : IMediaServerClient {
         return null;
     }
 
-    public Task<bool> TriggerMetadataScanAsync(IReadOnlyList<string> paths, CancellationToken cs = default) {
-        throw new NotImplementedException();
+    public async Task<bool> TriggerMetadataScanAsync(IReadOnlyList<string> paths, CancellationToken cs = default) {
+        // Guards
+        ArgumentNullException.ThrowIfNull(paths);
+
+        var mutation = """
+                mutation MetadataScan($input: ScanMetadataInput!) {
+                    metadataScan(input: $input)
+                }
+            """;
+        var variables = new {
+            input = new {
+                paths = paths
+            }
+        };
+        var data = await ExecuteQueryAsync(mutation, variables, cs);
+
+        if (data.TryGetProperty("metadataScan", out var metadataElement) && metadataElement.ValueKind != JsonValueKind.Null)
+            return true;
+        return false;
     }
 
     private async Task<JsonElement> ExecuteQueryAsync(string query, object? variables, CancellationToken cs) {
