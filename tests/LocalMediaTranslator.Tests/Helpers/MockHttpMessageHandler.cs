@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 
 namespace LocalMediaTranslator.Tests.Helpers;
@@ -9,18 +10,25 @@ public class MockHttpMessageHandler : HttpMessageHandler {
 
     public int CallCount { get; private set; }
     public HttpRequestMessage? LastRequest { get; private set; }
+    public string? LastRequestBody { get; private set; }
+    public HttpRequestHeaders? LastRequestHeaders { get; private set; }
 
     public MockHttpMessageHandler(string responseJson, HttpStatusCode statusCode = HttpStatusCode.OK) {
         _responseJson = responseJson;
         _statusCode = statusCode;
     }
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
         CallCount++;
         LastRequest = request;
+        LastRequestHeaders = request.Headers;
+        LastRequestBody = request.Content != null
+            ? await request.Content.ReadAsStringAsync(cancellationToken)
+            : null;
+
         var response = new HttpResponseMessage(_statusCode) {
             Content = new StringContent(_responseJson, Encoding.UTF8, "application/json")
         };
-        return Task.FromResult(response);
+        return response;
     }
 }
