@@ -27,7 +27,8 @@ public class LocalWhisperTranscriberTests {
                     // This should trigger the exception                
                 }
             });
-        } finally {
+        }
+        finally {
             if (File.Exists(tempAudioFile))
                 File.Delete(tempAudioFile);
         }

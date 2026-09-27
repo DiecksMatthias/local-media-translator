@@ -18,7 +18,7 @@ public class LocalWhisperTranscriber : ITranscriber {
         await using var audioStream = File.OpenRead(audioWavPath);
 
         int index = 1;
-        await foreach(var segment in process.ProcessAsync(audioStream, cs)) {
+        await foreach (var segment in process.ProcessAsync(audioStream, cs)) {
             var text = segment.Text?.Trim();
             if (string.IsNullOrWhiteSpace(text))
                 continue;

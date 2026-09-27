@@ -12,9 +12,9 @@ public class LlmTranslatorTests {
         var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/") };
         var translator = new LlmTranslator(client);
 
-        await Assert.ThrowsAsync<ArgumentNullException>(() => 
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
             translator.TranslateAsync(null!, new TranslationOptions()));
-        await Assert.ThrowsAsync<ArgumentNullException>(() => 
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
             translator.TranslateAsync(new List<SubtitleItem>(), null!));
     }
 
