@@ -1,7 +1,7 @@
-using System.Net;
-using System.Text;
+
 using LocalMediaTranslator.Core.Models;
 using LocalMediaTranslator.Infrastructure.Services;
+using LocalMediaTranslator.Tests.Helpers;
 
 namespace LocalMediaTranslator.Tests;
 
@@ -86,25 +86,5 @@ public class LlmTranslatorTests {
         await translator.TranslateAsync(items, options, progress);
 
         Assert.Equal(3, handler.CallCount);
-    }
-}
-
-public class MockHttpMessageHandler : HttpMessageHandler {
-    private readonly string _responseJson;
-    private readonly HttpStatusCode _statusCode;
-
-    public int CallCount { get; private set; }
-
-    public MockHttpMessageHandler(string responseJson, HttpStatusCode statusCode = HttpStatusCode.OK) {
-        _responseJson = responseJson;
-        _statusCode = statusCode;
-    }
-
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
-        CallCount++;
-        var response = new HttpResponseMessage(_statusCode) {
-            Content = new StringContent(_responseJson, Encoding.UTF8, "application/json")
-        };
-        return Task.FromResult(response);
     }
 }
