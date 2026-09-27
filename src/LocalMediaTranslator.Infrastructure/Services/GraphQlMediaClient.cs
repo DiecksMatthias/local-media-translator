@@ -13,11 +13,69 @@ public class GraphQlMediaClient : IMediaServerClient {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _options = options ?? throw new ArgumentNullException(nameof(options));
     }
-    public Task<IReadOnlyList<MediaScene>> FindScenesAsync(MediaSceneFilter filter, CancellationToken cs = default) {
-        throw new NotImplementedException();
+    public async Task<IReadOnlyList<MediaScene>> FindScenesAsync(MediaSceneFilter filter, CancellationToken cs = default) {
+        // Guards
+        ArgumentNullException.ThrowIfNull(filter);
+
+        const string query = """
+                        query FindScenes($filter: FindFilterType, $scene_filter: SceneFilterType) {
+                            findScenes(filter: $filter, scene_filter: $scene_filter) {
+                                count
+                                scenes {
+                                    id
+                                    title
+                                    files {
+                                        id
+                                        path
+                                    }
+                                    tags {
+                                        id
+                                        name
+                                    }
+                                }
+                            }
+                        }
+                        """;
+
+        // building variables && execute graphql call
+        var findFilterType = new {
+            page = filter.Page,
+            per_page = filter.PerPage,
+            q = string.IsNullOrWhiteSpace(filter.SearchTerm) ? null : filter.SearchTerm
+        };
+        var sceneFilterType = new {
+            tags = filter.TagIds?.Count > 0 ? new { value = filter.TagIds, modifier = "INCLUDES" } : null,
+            captions = filter.HasCaption.HasValue ? (filter.HasCaption.Value ? "true" : "false") : null
+        };
+        var variables = new {
+            filter = findFilterType,
+            scene_filter = sceneFilterType
+        };
+        var data = await ExecuteQueryAsync(query, variables, cs);
+
+        List<MediaScene> scenes = new();
+        if (data.TryGetProperty("findScenes", out var findScenesElement) && findScenesElement.ValueKind != JsonValueKind.Null) {
+            var sceneElements = findScenesElement.GetProperty("scenes");
+            foreach (var sceneElement in sceneElements.EnumerateArray()) {
+                var id = sceneElement.GetProperty("id").GetString()!;
+                var title = sceneElement.GetProperty("title").GetString() ?? string.Empty;
+                var files = sceneElement.GetProperty("files").EnumerateArray()
+                    .Select(f => new MediaFile(
+                        f.GetProperty("id").GetString()!,
+                        f.GetProperty("path").GetString()!,
+                        null, null, null)).ToList();
+                var tags = sceneElement.GetProperty("tags").EnumerateArray()
+                    .Select(t => t.GetProperty("name").GetString()!)
+                    .ToList();
+                scenes.Add(new MediaScene(id, title, files, tags));
+            }
+            return scenes;
+        }
+        return scenes;
     }
 
     public async Task<MediaScene?> GetSceneAsync(string sceneId, CancellationToken cs = default) {
+        //Guards
         ArgumentException.ThrowIfNullOrWhiteSpace(sceneId);
 
         const string query = """
