@@ -45,7 +45,7 @@ public class GraphQlMediaClient : IMediaServerClient {
         };
         var sceneFilterType = new {
             tags = filter.TagIds?.Count > 0 ? new { value = filter.TagIds, modifier = "INCLUDES" } : null,
-            captions = filter.HasCaption.HasValue ? (filter.HasCaption.Value ? "true" : "false") : null
+            captions = filter.HasCaption.HasValue ? new { value = "", modifier = filter.HasCaption.Value ? "NOT_NULL" : "IS_NULL" } : null
         };
         var variables = new {
             filter = findFilterType,
@@ -62,7 +62,7 @@ public class GraphQlMediaClient : IMediaServerClient {
                 var files = sceneElement.GetProperty("files").EnumerateArray()
                     .Select(f => new MediaFile(
                         f.GetProperty("id").GetString()!,
-                        f.GetProperty("path").GetString()!,
+                        TransformPath(f.GetProperty("path").GetString()!, _options.PathMappings),
                         null, null, null)).ToList();
                 var tags = sceneElement.GetProperty("tags").EnumerateArray()
                     .Select(t => t.GetProperty("name").GetString()!)
@@ -104,7 +104,7 @@ public class GraphQlMediaClient : IMediaServerClient {
             var files = sceneElement.GetProperty("files").EnumerateArray()
                 .Select(f => new MediaFile(
                     f.GetProperty("id").GetString()!,
-                    f.GetProperty("path").GetString()!,
+                    TransformPath(f.GetProperty("path").GetString()!, _options.PathMappings),
                     null, null, null
                 )).ToList();
 
@@ -161,5 +161,22 @@ public class GraphQlMediaClient : IMediaServerClient {
             throw new InvalidOperationException($"GraphQL Error: {errorMessage}");
         }
         return root.GetProperty("data").Clone();
+    }
+
+    // to handle the difference in docker path to actual machine path
+    private string TransformPath(string dockerPath, IReadOnlyDictionary<string, string> mappings) {
+        if (string.IsNullOrWhiteSpace(dockerPath) || mappings == null || mappings.Count == 0)
+            return dockerPath;
+
+        var normalizedPath = dockerPath.Replace('\\', '/');
+
+        foreach (var (dockerPrefix, localPrefix) in mappings.OrderByDescending(kv => kv.Key.Length)) {
+            var cleanDockerPath = dockerPrefix.TrimEnd('/', '\\').Replace('\\', '/');
+            if (normalizedPath.StartsWith(cleanDockerPath, StringComparison.OrdinalIgnoreCase)) {
+                var relativePath = normalizedPath[cleanDockerPath.Length..].TrimStart('/', '\\');
+                return Path.Combine(localPrefix, relativePath);
+            }
+        }
+        return dockerPath;
     }
 }

@@ -224,7 +224,7 @@ public class GraphQlMediaClientTests {
         Assert.Contains("\"page\":2", requestBody);
         Assert.Contains("\"per_page\":50", requestBody);
         Assert.Contains("\"q\":\"Tokyo\"", requestBody);
-        Assert.Contains("\"captions\":\"false\"", requestBody);
+        Assert.Contains("\"captions\":{\"value\":\"\",\"modifier\":\"IS_NULL\"}", requestBody);
         Assert.Contains("\"value\":[\"10\",\"20\"]", requestBody);
     }
 
