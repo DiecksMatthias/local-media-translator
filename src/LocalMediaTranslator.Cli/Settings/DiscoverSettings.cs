@@ -40,7 +40,7 @@ public class DiscoverSettings : CommandSettings {
     [Description("Generate bilingual subtitles showing original transcribed text above translated English.")]
     public bool DualLanguage { get; init; }
 
-    [CommandOption("--rescan / --no-rescan")]
+    [CommandOption("--rescan|--no-rescan")]
     [Description("Trigger a server metadata rescan for modified files after subtitle generation. Enabled by default.")]
     [DefaultValue(true)]
     public bool Rescan { get; init; } = true;

@@ -1,6 +1,8 @@
 namespace LocalMediaTranslator.Core.Models;
 
 public class TranslationOptions {
+    public Uri? EndPoint { get; set; }
+    public string? ApiKey { get; set; }
     public string Model { get; set; } = "gpt-4o-mini";
     public string SourceLanguage { get; set; } = "Japanese";
     public string TargetLanguage { get; set; } = "English";

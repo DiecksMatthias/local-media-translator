@@ -8,9 +8,10 @@ using LocalMediaTranslator.Core.Models.Enums;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using System.Net.Http.Headers;
 
 var configuration = new ConfigurationBuilder()
-    .SetBasePath(Directory.GetCurrentDirectory())
+    .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
     .AddUserSecrets<Program>(optional: true)
     .Build();
@@ -20,13 +21,20 @@ var services = new ServiceCollection();
 services.AddHttpClient();
 services.AddSingleton<IConfiguration>(configuration);
 services.Configure<MediaClientOptions>(configuration.GetSection("MediaServer"));
+services.Configure<TranslationOptions>(configuration.GetSection("Translation"));
+services.AddHttpClient<ITranslator, LlmTranslator>((sp, client) => {
+    var options = sp.GetRequiredService<IOptions<TranslationOptions>>().Value;
+    if (options.EndPoint is not null)
+        client.BaseAddress = options.EndPoint;
+    if (!string.IsNullOrWhiteSpace(options.ApiKey))
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
+    client.Timeout = TimeSpan.FromMinutes(5);
+});
 
 services.AddSingleton<IAudioExtractor, FFmpegAudioExtractor>();
-//services.AddSingleton<IMediaServerClient, GraphQlMediaClient>();
 services.AddKeyedSingleton<IMediaServerClient, GraphQlMediaClient>(MediaServerType.Stash);
 services.AddSingleton<ISubtitleWriter, SrtSubtitleWriter>();
 services.AddSingleton<ITranscriber, LocalWhisperTranscriber>();
-services.AddSingleton<ITranslator, LlmTranslator>();
 services.AddSingleton(sp => sp.GetRequiredService<IOptions<MediaClientOptions>>().Value);
 
 // wrapping microsoft di into adapter for spectre

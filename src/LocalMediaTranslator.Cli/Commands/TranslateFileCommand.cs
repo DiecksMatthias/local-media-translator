@@ -4,6 +4,7 @@ using LocalMediaTranslator.Cli.Settings;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
 using LocalMediaTranslator.Core.Models.Enums;
+using Microsoft.Extensions.Options;
 
 namespace LocalMediaTranslator.Cli.Commands;
 
@@ -12,12 +13,14 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
     private readonly ITranscriber _transcriber;
     private readonly ITranslator _translator;
     private readonly ISubtitleWriter _writer;
+    private readonly IOptions<TranslationOptions> _translationOptions;
 
-    public TranslateFileCommand(IAudioExtractor audioExtractor, ITranscriber transcriber, ITranslator translator, ISubtitleWriter writer) {
+    public TranslateFileCommand(IAudioExtractor audioExtractor, ITranscriber transcriber, ITranslator translator, ISubtitleWriter writer, IOptions<TranslationOptions> translationOptions) {
         _audioExtractor = audioExtractor;
         _transcriber = transcriber;
         _translator = translator;
         _writer = writer;
+        _translationOptions = translationOptions;
     }
 
     protected override async Task<int> ExecuteAsync(CommandContext context, TranslateFileSettings settings, CancellationToken cancellationToken) {
@@ -70,7 +73,14 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
                     var translationProgress = new Progress<int>(percent => {
                         translationTask.Value = percent;
                     });
-                    var translatedItems = await _translator.TranslateAsync(subtitleItems, new(), translationProgress, cancellationToken);
+                    var translationOptions = new TranslationOptions {
+                        BatchSize = _translationOptions.Value.BatchSize,
+                        Model = _translationOptions.Value.Model,
+                        SourceLanguage = _translationOptions.Value.SourceLanguage,
+                        SystemPrompt = _translationOptions.Value.SystemPrompt,
+                        TargetLanguage = _translationOptions.Value.TargetLanguage
+                    };
+                    var translatedItems = await _translator.TranslateAsync(subtitleItems, translationOptions, translationProgress, cancellationToken);
 
                     //write
                     var writeTask = ctx.AddTask("[blue]Writing subtitle file[/]");
