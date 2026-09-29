@@ -74,6 +74,7 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
 
                     // translate
                     var translationTask = ctx.AddTask("[cyan]Translating cues (LLM)[/]");
+                    translationTask.MaxValue = subtitleItems.Count; // to show proper percentage
                     var translationProgress = new Progress<int>(percent => {
                         translationTask.Value = percent;
                     });

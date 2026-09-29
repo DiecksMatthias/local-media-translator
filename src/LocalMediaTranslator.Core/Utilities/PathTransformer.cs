@@ -1,7 +1,7 @@
 namespace LocalMediaTranslator.Core.Utilities;
 
 public static class PathTransformer {
-    public static string TransformPath(string remotePath, IReadOnlyDictionary<string, string> mappings) {
+    public static string TransformPath(string remotePath, IReadOnlyDictionary<string, string>? mappings) {
         if (string.IsNullOrWhiteSpace(remotePath) || mappings == null || mappings.Count == 0)
             return remotePath;
 

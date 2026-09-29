@@ -87,4 +87,40 @@ public class LlmTranslatorTests {
 
         Assert.Equal(3, handler.CallCount);
     }
+
+    [Fact]
+    public async Task TranslateAsync_ConversationalPreambleAndFences_ParsesSuccessfully() {
+        var mockLlmJson = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"Here is the translated JSON:\\n```json\\n[{\\\"id\\\":1,\\\"translation\\\":\\\"Good morning\\\"}]\\n```\\nHope this helps!\"}}]}";
+
+        var handler = new MockHttpMessageHandler(mockLlmJson);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/") };
+        var translator = new LlmTranslator(client);
+
+        var items = new List<SubtitleItem> {
+            new() { Index = 1, OriginalText = "おはよう" }
+        };
+
+        var result = await translator.TranslateAsync(items, new TranslationOptions());
+
+        Assert.Equal("Good morning", result[0].TranslatedText);
+    }
+
+    [Fact]
+    public async Task TranslateAsync_TruncatedJsonResponse_RecoversCompletedItems() {
+        var mockLlmJson = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"[{\\\"id\\\":1,\\\"translation\\\":\\\"Completed item\\\"},{\\\"id\\\":2,\\\"translation\\\":\\\"Truncated\"}}]}";
+
+        var handler = new MockHttpMessageHandler(mockLlmJson);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/") };
+        var translator = new LlmTranslator(client);
+
+        var items = new List<SubtitleItem> {
+            new() { Index = 1, OriginalText = "完了" },
+            new() { Index = 2, OriginalText = "途切れた" }
+        };
+
+        var result = await translator.TranslateAsync(items, new TranslationOptions());
+
+        Assert.Equal("Completed item", result[0].TranslatedText);
+        Assert.Null(result[1].TranslatedText);
+    }
 }

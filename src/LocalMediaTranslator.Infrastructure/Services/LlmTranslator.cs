@@ -70,13 +70,24 @@ public class LlmTranslator : ITranslator {
     }
 
     private static string CleanJsonString(string content) {
-        var trimmed = content.Trim();
-        if (trimmed.StartsWith("```json", StringComparison.OrdinalIgnoreCase))
-            trimmed = trimmed[7..];
-        else if (trimmed.StartsWith("```"))
-            trimmed = trimmed[3..];
-        if (trimmed.EndsWith("```"))
-            trimmed = trimmed[..^3];
-        return trimmed;
+        if (string.IsNullOrWhiteSpace(content))
+            return string.Empty;
+
+        var start = content.IndexOf('[');
+        if (start == -1)
+            return content.Trim(); // fallback when no array brackets are found
+
+        var end = content.LastIndexOf(']');
+
+        // case 1: properly formed array
+        if (end > start)
+            return content.Substring(start, end - start + 1);
+
+        // case 2: array properly starting but cut off end
+        var lastBrace = content.LastIndexOf('}');
+        if (lastBrace > start)
+            return content.Substring(start, lastBrace - start + 1) + "]";
+
+        return content.Substring(start);
     }
 }

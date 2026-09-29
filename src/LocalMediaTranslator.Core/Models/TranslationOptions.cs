@@ -6,7 +6,7 @@ public class TranslationOptions {
     public string Model { get; set; } = "gpt-4o-mini";
     public string SourceLanguage { get; set; } = "Japanese";
     public string TargetLanguage { get; set; } = "English";
-    public int BatchSize { get; set; } = 20;
+    public int BatchSize { get; set; } = 10;
     public string SystemPrompt { get; set; } =
         $"You are a professional Japanese to English subtitle translator. " +
         $"Translate the provided JSON array of dialogue cues into natural, spoken English. " +
