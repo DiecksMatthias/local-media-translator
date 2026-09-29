@@ -22,19 +22,26 @@ services.AddHttpClient();
 services.AddSingleton<IConfiguration>(configuration);
 services.Configure<MediaClientOptions>(configuration.GetSection("MediaServer"));
 services.Configure<TranslationOptions>(configuration.GetSection("Translation"));
+services.Configure<TranscriptionOptions>(configuration.GetSection("Transcription"));
 services.AddHttpClient<ITranslator, LlmTranslator>((sp, client) => {
     var options = sp.GetRequiredService<IOptions<TranslationOptions>>().Value;
-    if (options.EndPoint is not null)
-        client.BaseAddress = options.EndPoint;
+    if (options.Endpoint is not null)
+        client.BaseAddress = options.Endpoint;
     if (!string.IsNullOrWhiteSpace(options.ApiKey))
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
-    client.Timeout = TimeSpan.FromMinutes(5);
+    client.Timeout = options.Timeout;
+});
+services.AddHttpClient<ITranscriber, HttpWhisperTranscriber>((sp, client) => {
+    var options = sp.GetRequiredService<IOptions<TranscriptionOptions>>().Value;
+    if (options.Endpoint is not null)
+        client.BaseAddress = options.Endpoint;
+    client.Timeout = options.Timeout;
 });
 
 services.AddSingleton<IAudioExtractor, FFmpegAudioExtractor>();
 services.AddKeyedSingleton<IMediaServerClient, GraphQlMediaClient>(MediaServerType.Stash);
 services.AddSingleton<ISubtitleWriter, SrtSubtitleWriter>();
-services.AddSingleton<ITranscriber, LocalWhisperTranscriber>();
+//services.AddSingleton<ITranscriber, LocalWhisperTranscriber>();
 services.AddSingleton(sp => sp.GetRequiredService<IOptions<MediaClientOptions>>().Value);
 
 // wrapping microsoft di into adapter for spectre
