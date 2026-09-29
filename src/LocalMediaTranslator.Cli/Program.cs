@@ -41,8 +41,8 @@ services.AddHttpClient<ITranscriber, HttpWhisperTranscriber>((sp, client) => {
 services.AddSingleton<IAudioExtractor, FFmpegAudioExtractor>();
 services.AddKeyedSingleton<IMediaServerClient, GraphQlMediaClient>(MediaServerType.Stash);
 services.AddSingleton<ISubtitleWriter, SrtSubtitleWriter>();
-//services.AddSingleton<ITranscriber, LocalWhisperTranscriber>();
 services.AddSingleton(sp => sp.GetRequiredService<IOptions<MediaClientOptions>>().Value);
+services.AddSingleton<IMediaTranslationPipeline, MediaTranslationPipeline>();
 
 // wrapping microsoft di into adapter for spectre
 var registrar = new TypeRegistrar(services);
