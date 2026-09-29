@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
+using LocalMediaTranslator.Core.Utilities;
 
 namespace LocalMediaTranslator.Infrastructure.Services;
 
@@ -62,7 +63,7 @@ public class GraphQlMediaClient : IMediaServerClient {
                 var files = sceneElement.GetProperty("files").EnumerateArray()
                     .Select(f => new MediaFile(
                         f.GetProperty("id").GetString()!,
-                        TransformPath(f.GetProperty("path").GetString()!, _options.PathMappings),
+                        PathTransformer.TransformPath(f.GetProperty("path").GetString()!, _options.PathMappings),
                         null, null, null)).ToList();
                 var tags = sceneElement.GetProperty("tags").EnumerateArray()
                     .Select(t => t.GetProperty("name").GetString()!)
@@ -104,7 +105,7 @@ public class GraphQlMediaClient : IMediaServerClient {
             var files = sceneElement.GetProperty("files").EnumerateArray()
                 .Select(f => new MediaFile(
                     f.GetProperty("id").GetString()!,
-                    TransformPath(f.GetProperty("path").GetString()!, _options.PathMappings),
+                    PathTransformer.TransformPath(f.GetProperty("path").GetString()!, _options.PathMappings),
                     null, null, null
                 )).ToList();
 
@@ -161,22 +162,5 @@ public class GraphQlMediaClient : IMediaServerClient {
             throw new InvalidOperationException($"GraphQL Error: {errorMessage}");
         }
         return root.GetProperty("data").Clone();
-    }
-
-    // to handle the difference in docker path to actual machine path
-    private string TransformPath(string dockerPath, IReadOnlyDictionary<string, string> mappings) {
-        if (string.IsNullOrWhiteSpace(dockerPath) || mappings == null || mappings.Count == 0)
-            return dockerPath;
-
-        var normalizedPath = dockerPath.Replace('\\', '/');
-
-        foreach (var (dockerPrefix, localPrefix) in mappings.OrderByDescending(kv => kv.Key.Length)) {
-            var cleanDockerPath = dockerPrefix.TrimEnd('/', '\\').Replace('\\', '/');
-            if (normalizedPath.StartsWith(cleanDockerPath, StringComparison.OrdinalIgnoreCase)) {
-                var relativePath = normalizedPath[cleanDockerPath.Length..].TrimStart('/', '\\');
-                return Path.Combine(localPrefix, relativePath);
-            }
-        }
-        return dockerPath;
     }
 }

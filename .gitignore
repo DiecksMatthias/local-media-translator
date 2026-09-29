@@ -485,3 +485,4 @@ $RECYCLE.BIN/
 *.bin
 *.wav
 PROJECT_TRACKING.md
+.hermes/

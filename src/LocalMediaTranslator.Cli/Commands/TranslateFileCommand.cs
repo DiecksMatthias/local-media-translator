@@ -5,6 +5,7 @@ using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
 using LocalMediaTranslator.Core.Models.Enums;
 using Microsoft.Extensions.Options;
+using LocalMediaTranslator.Core.Utilities;
 
 namespace LocalMediaTranslator.Cli.Commands;
 
@@ -14,20 +15,23 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
     private readonly ITranslator _translator;
     private readonly ISubtitleWriter _writer;
     private readonly IOptions<TranslationOptions> _translationOptions;
+    private readonly IOptions<MediaClientOptions> _mediaOptions;
 
-    public TranslateFileCommand(IAudioExtractor audioExtractor, ITranscriber transcriber, ITranslator translator, ISubtitleWriter writer, IOptions<TranslationOptions> translationOptions) {
+    public TranslateFileCommand(IAudioExtractor audioExtractor, ITranscriber transcriber, ITranslator translator, ISubtitleWriter writer, IOptions<TranslationOptions> translationOptions, IOptions<MediaClientOptions> mediaOptions) {
         _audioExtractor = audioExtractor;
         _transcriber = transcriber;
         _translator = translator;
         _writer = writer;
         _translationOptions = translationOptions;
+        _mediaOptions = mediaOptions;
     }
 
     protected override async Task<int> ExecuteAsync(CommandContext context, TranslateFileSettings settings, CancellationToken cancellationToken) {
         // guards & validation
         ArgumentNullException.ThrowIfNull(settings);
-        if (string.IsNullOrWhiteSpace(settings.InputPath) || !File.Exists(settings.InputPath)) {
-            AnsiConsole.MarkupLine($"[red]Error:[/] Input file not found [bold] {settings.InputPath}[/]");
+        var localPath = PathTransformer.TransformPath(settings.InputPath, _mediaOptions.Value.PathMappings);
+        if (string.IsNullOrWhiteSpace(localPath) || !File.Exists(localPath)) {
+            AnsiConsole.MarkupLine($"[red]Error:[/] Input file not found [bold] {localPath}[/]");
             return 1;
         }
         if (!File.Exists(settings.ModelPath)) {
@@ -36,7 +40,7 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
         }
 
         var tempAudioPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.wav");
-        var srtPath = !string.IsNullOrWhiteSpace(settings.OutputPath) ? settings.OutputPath : Path.ChangeExtension(settings.InputPath, ".srt");
+        var srtPath = !string.IsNullOrWhiteSpace(settings.OutputPath) ? settings.OutputPath : Path.ChangeExtension(localPath, ".srt");
 
         try {
             await AnsiConsole.Progress()
@@ -50,7 +54,7 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
                 .StartAsync(async ctx => {
                     // extract
                     var extractTask = ctx.AddTask("[green]Extracting audio (FFmpeg)[/]");
-                    await _audioExtractor.ExtractAudioAsync(settings.InputPath, tempAudioPath, null, cancellationToken);
+                    await _audioExtractor.ExtractAudioAsync(localPath, tempAudioPath, null, cancellationToken);
                     extractTask.Increment(100);
 
                     // transcribe
@@ -86,7 +90,7 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
                     var writeTask = ctx.AddTask("[blue]Writing subtitle file[/]");
                     await using (var fileStream = File.Create(srtPath)) {
                         var track = new SubtitleTrack {
-                            SourceFileName = Path.GetFileName(settings.InputPath),
+                            SourceFileName = Path.GetFileName(localPath),
                             Language = LanguageCode.Japanese, // hardcoded for now instead of default value in subtitletrack class so i can add a command option later
                             TargetedLanguage = LanguageCode.English, // hardcoded for now instead of default value in subtitletrack class so i can add a command option later
                             Items = translatedItems.ToList()
