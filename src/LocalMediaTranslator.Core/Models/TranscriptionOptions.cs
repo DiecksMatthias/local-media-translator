@@ -8,6 +8,6 @@ public class TranscriptionOptions : RemoteServiceOptions {
     public string? ModelPath { get; set; }
     public float Temperature { get; set; } = 0.0f;
     public TranscriptionOptions() {
-        Timeout = TimeSpan.FromMinutes(10);
+        Timeout = TimeSpan.FromMinutes(180);
     }
 }

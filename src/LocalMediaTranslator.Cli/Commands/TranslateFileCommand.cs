@@ -10,19 +10,11 @@ using LocalMediaTranslator.Core.Utilities;
 namespace LocalMediaTranslator.Cli.Commands;
 
 public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
-    private readonly IAudioExtractor _audioExtractor;
-    private readonly ITranscriber _transcriber;
-    private readonly ITranslator _translator;
-    private readonly ISubtitleWriter _writer;
-    private readonly IOptions<TranslationOptions> _translationOptions;
+    private readonly IMediaTranslationPipeline _pipeline;
     private readonly IOptions<MediaClientOptions> _mediaOptions;
 
-    public TranslateFileCommand(IAudioExtractor audioExtractor, ITranscriber transcriber, ITranslator translator, ISubtitleWriter writer, IOptions<TranslationOptions> translationOptions, IOptions<MediaClientOptions> mediaOptions) {
-        _audioExtractor = audioExtractor;
-        _transcriber = transcriber;
-        _translator = translator;
-        _writer = writer;
-        _translationOptions = translationOptions;
+    public TranslateFileCommand(IMediaTranslationPipeline pipeline, IOptions<MediaClientOptions> mediaOptions) {
+        _pipeline = pipeline;
         _mediaOptions = mediaOptions;
     }
 
@@ -34,13 +26,13 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
             AnsiConsole.MarkupLine($"[red]Error:[/] Input file not found [bold] {localPath}[/]");
             return 1;
         }
-        if (!File.Exists(settings.ModelPath)) {
+        if (settings.ModelPath is not null && !File.Exists(settings.ModelPath)) {
             AnsiConsole.MarkupLine($"[red]Error[/]: Whisper model file not found: [bold] {settings.ModelPath}[/]");
             return 1;
         }
 
-        var tempAudioPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.wav");
         var srtPath = !string.IsNullOrWhiteSpace(settings.OutputPath) ? settings.OutputPath : Path.ChangeExtension(localPath, ".srt");
+        string? resultSrtPath = null;
 
         try {
             await AnsiConsole.Progress()
@@ -52,65 +44,59 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
                     new SpinnerColumn()
                 ])
                 .StartAsync(async ctx => {
-                    // extract
                     var extractTask = ctx.AddTask("[green]Extracting audio (FFmpeg)[/]");
-                    await _audioExtractor.ExtractAudioAsync(localPath, tempAudioPath, null, cancellationToken);
-                    extractTask.Increment(100);
-
-                    // transcribe
                     var transcribeTask = ctx.AddTask("[yellow]Transcribing audio (Whisper)[/]");
-                    var transcriptionOptions = new TranscriptionOptions { ModelPath = settings.ModelPath };
-                    var subtitleItems = new List<SubtitleItem>();
-                    await foreach (var item in _transcriber.TranscribeAsync(tempAudioPath, transcriptionOptions, cancellationToken)) {
-                        subtitleItems.Add(item);
-                        transcribeTask.Description = $"[yellow]Transcribing audio (Whisper) - {subtitleItems.Count} cues [/]";
-                    }
-                    transcribeTask.Increment(100);
-
-                    if (subtitleItems.Count == 0) {
-                        AnsiConsole.MarkupLine("[yellow]No spoken dialogue detected[/]");
-                        return;
-                    }
-
-                    // translate
-                    var translationTask = ctx.AddTask("[cyan]Translating cues (LLM)[/]");
-                    translationTask.MaxValue = subtitleItems.Count; // to show proper percentage
-                    var translationProgress = new Progress<int>(percent => {
-                        translationTask.Value = percent;
-                    });
-                    var translationOptions = new TranslationOptions {
-                        BatchSize = _translationOptions.Value.BatchSize,
-                        Model = _translationOptions.Value.Model,
-                        SourceLanguage = _translationOptions.Value.SourceLanguage,
-                        SystemPrompt = _translationOptions.Value.SystemPrompt,
-                        TargetLanguage = _translationOptions.Value.TargetLanguage
-                    };
-                    var translatedItems = await _translator.TranslateAsync(subtitleItems, translationOptions, translationProgress, cancellationToken);
-
-                    //write
+                    var translateTask = ctx.AddTask("[cyan]Translating cues (LLM)[/]");
                     var writeTask = ctx.AddTask("[blue]Writing subtitle file[/]");
-                    await using (var fileStream = File.Create(srtPath)) {
-                        var track = new SubtitleTrack {
-                            SourceFileName = Path.GetFileName(localPath),
-                            Language = LanguageCode.Japanese, // hardcoded for now instead of default value in subtitletrack class so i can add a command option later
-                            TargetedLanguage = LanguageCode.English, // hardcoded for now instead of default value in subtitletrack class so i can add a command option later
-                            Items = translatedItems.ToList()
-                        };
-                        await _writer.WriteAsync(track, fileStream, dualLanguage: settings.DualLanguage, cs: cancellationToken);
-                    }
-                    writeTask.Increment(100);
+
+                    // UI changes
+                    var progress = new Progress<PipelineProgressReport>(report => {
+                        switch (report.Step) {
+                            case PipelineStep.ExtractingAudio:
+                                if (report.Percentage >= 100)
+                                    extractTask.Increment(100);
+                                break;
+                            case PipelineStep.Transcribing:
+                                if (!string.IsNullOrWhiteSpace(report.Message))
+                                    transcribeTask.Description = $"[yellow]{Markup.Escape(report.Message)}[/]";
+                                if (report.Percentage >= 100)
+                                    transcribeTask.Increment(100);
+                                break;
+                            case PipelineStep.Translating:
+                                if (report.TotalItems.HasValue)
+                                    translateTask.MaxValue = report.TotalItems.Value;
+                                if (report.ProcessedItems.HasValue)
+                                    translateTask.Value = report.ProcessedItems.Value;
+                                if (!string.IsNullOrWhiteSpace(report.Message))
+                                    translateTask.Description = $"[cyan]{Markup.Escape(report.Message)}[/]";
+                                break;
+                            case PipelineStep.WritingSubtitles:
+                                if (report.Percentage >= 100)
+                                    writeTask.Increment(100);
+                                break;
+                        }
+                    });
+
+                    // executing logic
+                    var pipelineOptions = new PipelineExecutionOptions {
+                        OutputSrtPath = srtPath,
+                        MediaFilePath = localPath,
+                        ModelPath = settings.ModelPath,
+                        DualLanguage = settings.DualLanguage
+                    };
+                    resultSrtPath = await _pipeline.ExecuteAsync(pipelineOptions, progress, cancellationToken);
                 });
 
+            if (string.IsNullOrWhiteSpace(resultSrtPath)) {
+                AnsiConsole.MarkupLine("[yellow]No spoken dialogue detected. Subtitle file was not generated.[/]");
+                return 0;
+            }
+            AnsiConsole.MarkupLine($"[green]Successfully generated subtitles:[/] [bold]{Markup.Escape(resultSrtPath)}[/]");
+            return 0;
         }
         catch (Exception ex) {
-            AnsiConsole.MarkupLine($"[red]Error during pipeline execution:[/] {ex.Message}");
+            AnsiConsole.MarkupLine($"[red]Error during pipeline execution:[/] {Markup.Escape(ex.Message)}");
             return 1;
         }
-        finally {
-            if (File.Exists(tempAudioPath))
-                File.Delete(tempAudioPath);
-        }
-        AnsiConsole.MarkupLine($"[green]Successfully generated subtitles:[/] [bold]{srtPath}[/]");
-        return 0;
     }
 }

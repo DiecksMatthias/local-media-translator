@@ -3,7 +3,6 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
-using Whisper.net;
 
 namespace LocalMediaTranslator.Infrastructure.Services;
 

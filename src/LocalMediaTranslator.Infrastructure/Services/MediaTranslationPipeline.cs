@@ -11,13 +11,15 @@ public class MediaTranslationPipeline : IMediaTranslationPipeline {
     private readonly ITranslator _translator;
     private readonly ISubtitleWriter _subtitleWriter;
     private readonly IOptions<TranslationOptions> _translationOptions;
+    private readonly IOptions<TranscriptionOptions> _transcribeOptions;
 
-    public MediaTranslationPipeline(IAudioExtractor audioExtractor, ITranscriber transcriber, ITranslator translator, ISubtitleWriter subtitleWriter, IOptions<TranslationOptions> options) {
+    public MediaTranslationPipeline(IAudioExtractor audioExtractor, ITranscriber transcriber, ITranslator translator, ISubtitleWriter subtitleWriter, IOptions<TranslationOptions> translationOptions, IOptions<TranscriptionOptions> transcribeOptions) {
         _audioExtractor = audioExtractor;
         _transcriber = transcriber;
         _translator = translator;
         _subtitleWriter = subtitleWriter;
-        _translationOptions = options;
+        _translationOptions = translationOptions;
+        _transcribeOptions = transcribeOptions;
     }
     public async Task<string?> ExecuteAsync(PipelineExecutionOptions options, IProgress<PipelineProgressReport>? progress = null, CancellationToken cs = default) {
         var tempAudioPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.wav");
@@ -29,7 +31,12 @@ public class MediaTranslationPipeline : IMediaTranslationPipeline {
             progress?.Report(new PipelineProgressReport(PipelineStep.ExtractingAudio, Percentage: 100, Message: "Extracting audio (FFmpeg)"));
 
             // transcribe
-            var transcribeOptions = new TranscriptionOptions { ModelPath = options.ModelPath };
+            var transcribeOptions = new TranscriptionOptions {
+                ModelPath = _transcribeOptions.Value.ModelPath,
+                Model = _transcribeOptions.Value.Model,
+                Language = _transcribeOptions.Value.Language,
+                Temperature = _transcribeOptions.Value.Temperature
+            };
             var subtitleItems = new List<SubtitleItem>();
             await foreach (var item in _transcriber.TranscribeAsync(tempAudioPath, transcribeOptions, cs)) {
                 subtitleItems.Add(item);

@@ -24,14 +24,23 @@ public class LlmTranslator : ITranslator {
         foreach (var batch in items.Chunk(options.BatchSize)) {
             cs.ThrowIfCancellationRequested();
 
-            var translations = await TranslateBatchAsync(batch, options, cs);
-            var translationMap = translations.ToDictionary(t => t.Id, t => t.Translation);
+            try {
+                var translations = await TranslateBatchAsync(batch, options, cs);
+                var translationMap = translations.ToDictionary(t => t.Id, t => t.Translation);
 
-            foreach (var item in batch) {
-                if (translationMap.TryGetValue(item.Index, out var translatedText)) {
-                    item.TranslatedText = translatedText;
+                foreach (var item in batch) {
+                    if (translationMap.TryGetValue(item.Index, out var translatedText)) {
+                        item.TranslatedText = translatedText;
+                    }
+                }
+            } catch (Exception) when (!cs.IsCancellationRequested) {
+                // Graceful batch fallback: If LLM returns unparseable output or network blips for this batch,
+                // fallback to original text so remaining batches in long media files continue processing.
+                foreach (var item in batch) {
+                    item.TranslatedText ??= item.OriginalText;
                 }
             }
+
             processCount += batch.Length;
             progress?.Report(processCount);
         }

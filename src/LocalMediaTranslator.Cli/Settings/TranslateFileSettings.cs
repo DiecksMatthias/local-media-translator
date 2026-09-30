@@ -10,7 +10,7 @@ public class TranslateFileSettings : CommandSettings {
 
     [CommandOption("-m|--model <MODEL_PATH>")]
     [Description("Path to the ggml Whisper model file")]
-    public string ModelPath { get; init; } = "ggml-base.bin";
+    public string? ModelPath { get; init; }
 
     [CommandOption("-d|--dual-language")]
     [Description("Generate dual-language subtitles (sources + target text)")]
