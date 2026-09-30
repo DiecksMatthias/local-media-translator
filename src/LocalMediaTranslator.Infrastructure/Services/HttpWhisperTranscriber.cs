@@ -31,8 +31,14 @@ public class HttpWhisperTranscriber : ITranscriber {
         form.Add(new StringContent("0.0"), "temperature");
 
         using var response = await _httpClient.PostAsync("v1/audio/transcriptions", form, cs);
-        response.EnsureSuccessStatusCode();
-
+        if (!response.IsSuccessStatusCode) {
+            var errorBody = await response.Content.ReadAsStringAsync(cs);
+            if (errorBody.Contains("CUDA failed with error out of memory", StringComparison.OrdinalIgnoreCase) ||
+                errorBody.Contains("out of memory", StringComparison.OrdinalIgnoreCase)) {
+                throw new OutOfMemoryException("Remote Whisper GPU out of memory. Check if other GPU workloads (e.g. Ollama) are holding VRAM.");
+            }
+            throw new HttpRequestException($"Transcription failed with status {(int)response.StatusCode} ({response.ReasonPhrase}): {errorBody}");
+        }
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cs));
         var segments = doc.RootElement.GetProperty("segments").EnumerateArray();
 

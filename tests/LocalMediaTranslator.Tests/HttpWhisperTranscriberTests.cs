@@ -80,4 +80,27 @@ public class HttpWhisperTranscriberTests {
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
     }
+
+    [Fact]
+    public async Task TranscribeAsync_CudaOutOfMemory_ThrowsOutOfMemoryException() {
+        var mockError = "RuntimeError: CUDA failed with error out of memory";
+        var handler = new MockHttpMessageHandler(mockError, System.Net.HttpStatusCode.InternalServerError);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        var tempFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.wav");
+        await File.WriteAllBytesAsync(tempFile, new byte[] { 0x01, 0x02 });
+
+        try {
+            var options = new TranscriptionOptions();
+            var ex = await Assert.ThrowsAsync<OutOfMemoryException>(async () => {
+                await foreach (var _ in transcriber.TranscribeAsync(tempFile, options)) { }
+            });
+
+            Assert.Contains("Remote Whisper GPU out of memory", ex.Message);
+        }
+        finally {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
 }

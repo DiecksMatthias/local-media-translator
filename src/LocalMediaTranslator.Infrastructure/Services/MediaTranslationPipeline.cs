@@ -30,6 +30,9 @@ public class MediaTranslationPipeline : IMediaTranslationPipeline {
             await _audioExtractor.ExtractAudioAsync(options.MediaFilePath, tempAudioPath, null, cs);
             progress?.Report(new PipelineProgressReport(PipelineStep.ExtractingAudio, Percentage: 100, Message: "Extracting audio (FFmpeg)"));
 
+            // try to flush the gpu memory so it doesn't run out of memory when starting to transcribe 
+            await _translator.UnloadAsync(cs);
+
             // transcribe
             var transcribeOptions = new TranscriptionOptions {
                 ModelPath = _transcribeOptions.Value.ModelPath,

@@ -1,16 +1,20 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
 using LocalMediaTranslator.Infrastructure.Models;
+using Microsoft.Extensions.Options;
 
 namespace LocalMediaTranslator.Infrastructure.Services;
 
 public class LlmTranslator : ITranslator {
     private readonly HttpClient _httpclient;
+    private readonly IOptions<TranslationOptions> _options;
 
-    public LlmTranslator(HttpClient httpClient) {
+    public LlmTranslator(HttpClient httpClient, IOptions<TranslationOptions>? options = null) {
         _httpclient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _options = options ?? Options.Create(new TranslationOptions());
     }
 
     public async Task<IReadOnlyList<SubtitleItem>> TranslateAsync(IReadOnlyList<SubtitleItem> items, TranslationOptions options, IProgress<int>? progress = null, CancellationToken cs = default) {
@@ -33,7 +37,8 @@ public class LlmTranslator : ITranslator {
                         item.TranslatedText = translatedText;
                     }
                 }
-            } catch (Exception) when (!cs.IsCancellationRequested) {
+            }
+            catch (Exception) when (!cs.IsCancellationRequested) {
                 // Graceful batch fallback: If LLM returns unparseable output or network blips for this batch,
                 // fallback to original text so remaining batches in long media files continue processing.
                 foreach (var item in batch) {
@@ -98,5 +103,26 @@ public class LlmTranslator : ITranslator {
             return content.Substring(start, lastBrace - start + 1) + "]";
 
         return content.Substring(start);
+    }
+
+    public async Task UnloadAsync(CancellationToken cs = default) {
+        if (_options.Value.Endpoint is null || string.IsNullOrWhiteSpace(_options.Value.Model))
+            return;
+
+        try {
+            var payload = new {
+                model = _options.Value.Model,
+                keep_alive = 0
+            };
+            var content = new StringContent(
+            JsonSerializer.Serialize(payload),
+            Encoding.UTF8,
+            "application/json"
+            );
+            using var response = await _httpclient.PostAsync("api/generate", content, cs);
+        }
+        catch {
+
+        }
     }
 }
