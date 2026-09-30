@@ -110,16 +110,19 @@ public class LlmTranslator : ITranslator {
             return;
 
         try {
-            var payload = new {
-                model = _options.Value.Model,
-                keep_alive = 0
-            };
-            var content = new StringContent(
-            JsonSerializer.Serialize(payload),
-            Encoding.UTF8,
-            "application/json"
-            );
-            using var response = await _httpclient.PostAsync("api/generate", content, cs);
+            // Query Ollama for all models currently occupying VRAM
+            using var psResponse = await _httpclient.GetAsync("api/ps", cs);
+            if (psResponse.IsSuccessStatusCode) {
+                using var doc = JsonDocument.Parse(await psResponse.Content.ReadAsStreamAsync(cs));
+                if (doc.RootElement.TryGetProperty("models", out var models)) {
+                    foreach (var model in models.EnumerateArray()) {
+                        if (model.TryGetProperty("name", out var modelName)) {
+                            var payload = new { model = modelName.GetString(), keep_alive = 0 };
+                            await _httpclient.PostAsJsonAsync("api/generate", payload, cs);
+                        }
+                    }
+                }
+            }
         }
         catch {
 
