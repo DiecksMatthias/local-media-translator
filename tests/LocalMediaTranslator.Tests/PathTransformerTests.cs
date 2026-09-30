@@ -44,4 +44,57 @@ public class PathTransformerTests {
 
         Assert.Equal("/other/path/file.mp4", result);
     }
+
+    [Fact]
+    public void ReverseTransform_EmptyPathOrNullMappings_ReturnsOriginalPath() {
+        Assert.Equal("", PathTransformer.ReverseTransform("", null));
+        Assert.Equal("test/path", PathTransformer.ReverseTransform("test/path", null));
+        Assert.Equal("test/path", PathTransformer.ReverseTransform("test/path", new Dictionary<string, string>()));
+    }
+
+    [Fact]
+    public void ReverseTransform_MatchingHostPrefix_MapsToDockerPrefix() {
+        var mappings = new Dictionary<string, string> {
+            ["/data/videos"] = "/mnt/storage/media/videos",
+            ["/data"] = "/mnt/storage"
+        };
+
+        var result = PathTransformer.ReverseTransform("/mnt/storage/media/videos/movie.srt", mappings);
+
+        Assert.Equal("/data/videos/movie.srt", result);
+    }
+
+    [Fact]
+    public void ReverseTransform_LongestHostPrefixMatchesFirst() {
+        var mappings = new Dictionary<string, string> {
+            ["/data"] = "/mnt/root",
+            ["/data/sub/nested"] = "/mnt/root/nested"
+        };
+
+        var result = PathTransformer.ReverseTransform("/mnt/root/nested/file.srt", mappings);
+
+        Assert.Equal("/data/sub/nested/file.srt", result);
+    }
+
+    [Fact]
+    public void ReverseTransform_NonMatchingPath_ReturnsOriginalPath() {
+        var mappings = new Dictionary<string, string> {
+            ["/data"] = "/mnt/storage"
+        };
+
+        var result = PathTransformer.ReverseTransform("/other/path/file.srt", mappings);
+
+        Assert.Equal("/other/path/file.srt", result);
+    }
+
+    [Fact]
+    public void ReverseTransform_HandlesWindowsBackslashesProperly() {
+        var mappings = new Dictionary<string, string> {
+            ["/data"] = "C:\\Media\\StashData"
+        };
+
+        var result = PathTransformer.ReverseTransform("C:\\Media\\StashData\\Subfolder\\file.srt", mappings);
+
+        Assert.Equal("/data/Subfolder/file.srt", result);
+    }
 }

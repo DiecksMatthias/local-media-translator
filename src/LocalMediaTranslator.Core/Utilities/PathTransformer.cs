@@ -16,4 +16,23 @@ public static class PathTransformer {
         }
         return remotePath;
     }
+
+    public static string ReverseTransform(string localPath, IReadOnlyDictionary<string, string>? mappings) {
+        if (string.IsNullOrWhiteSpace(localPath) || mappings == null || mappings.Count == 0)
+            return localPath;
+
+        var normalizedPath = localPath.Replace('\\', '/');
+
+        foreach (var (dockerPrefix, localPrefix) in mappings.OrderByDescending(kv => kv.Value.Length)) {
+            var cleanLocalPath = localPrefix.TrimEnd('/', '\\').Replace('\\', '/');
+            if (normalizedPath.StartsWith(cleanLocalPath, StringComparison.OrdinalIgnoreCase)) {
+                var cleanDockerPrefix = dockerPrefix.TrimEnd('/', '\\').Replace('\\', '/');
+                var relativePath = normalizedPath[cleanLocalPath.Length..].Trim('/', '\\');
+                return string.IsNullOrEmpty(relativePath)
+                    ? cleanDockerPrefix
+                    : $"{cleanDockerPrefix}/{relativePath}";
+            }
+        }
+        return localPath;
+    }
 }

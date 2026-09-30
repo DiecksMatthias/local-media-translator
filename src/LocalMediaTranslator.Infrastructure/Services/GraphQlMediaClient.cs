@@ -120,7 +120,7 @@ public class GraphQlMediaClient : IMediaServerClient {
     public async Task<bool> TriggerMetadataScanAsync(IReadOnlyList<string> paths, CancellationToken cs = default) {
         // Guards
         ArgumentNullException.ThrowIfNull(paths);
-
+        var remotePath = paths.Select(p => PathTransformer.ReverseTransform(p, _options.PathMappings)).ToList();
         var mutation = """
                 mutation MetadataScan($input: ScanMetadataInput!) {
                     metadataScan(input: $input)
@@ -128,7 +128,7 @@ public class GraphQlMediaClient : IMediaServerClient {
             """;
         var variables = new {
             input = new {
-                paths = paths
+                paths = remotePath
             }
         };
         var data = await ExecuteQueryAsync(mutation, variables, cs);

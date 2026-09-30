@@ -55,5 +55,8 @@ app.Configure(config => {
     config.AddCommand<DiscoverCommand>("discover")
         .WithDescription("Queries media servers for scene matching criteria")
         .WithExample(["discover", "--tag", "NeedSubtitles"]);
+    config.AddCommand<TranslateSceneCommand>("translate-scene")
+        .WithDescription("Translates a scene by ID from the media server and optionally triggers a rescan")
+        .WithExample(["translate-scene", "12345", "--dual-language", "--rescan"]);
 });
 return await app.RunAsync(args);
