@@ -45,6 +45,9 @@ public class MediaTranslationPipeline : IMediaTranslationPipeline {
                 subtitleItems.Add(item);
                 progress?.Report(new PipelineProgressReport(PipelineStep.Transcribing, Percentage: null, Message: $"Transcribing audio (Whisper) - {subtitleItems.Count} cues"));
             }
+
+            // flush out the transcribe model from VRAM so ollama has access to the whole gpu
+            await _transcriber.UnloadAsync(cs);
             progress?.Report(new PipelineProgressReport(PipelineStep.Transcribing, Percentage: 100, Message: $"Transcribing audio (Whisper) - {subtitleItems.Count} cues"));
 
             if (subtitleItems.Count == 0) {

@@ -11,4 +11,5 @@ public interface ITranscriber {
     /// <param name="cs"></param>
     /// <returns></returns>
     IAsyncEnumerable<SubtitleItem> TranscribeAsync(string audioWavPath, TranscriptionOptions options, CancellationToken cs = default);
+    Task UnloadAsync(CancellationToken cs = default) => Task.CompletedTask;
 }

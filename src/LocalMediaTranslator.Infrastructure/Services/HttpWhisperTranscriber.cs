@@ -58,4 +58,25 @@ public class HttpWhisperTranscriber : ITranscriber {
             };
         }
     }
+
+    // used to properly unload speachers from the vram so that ollama can use the full gpu
+    public async Task UnloadAsync(CancellationToken cs = default) {
+        try {
+            using var response = await _httpClient.GetAsync("api/ps", cs);
+            if (response.IsSuccessStatusCode) {
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cs));
+                if (doc.RootElement.TryGetProperty("models", out var models)) {
+                    foreach (var model in models.EnumerateArray()) {
+                        var modelID = model.GetString();
+                        if (!string.IsNullOrWhiteSpace(modelID))
+                            await _httpClient.DeleteAsync($"api/ps/{Uri.EscapeDataString(modelID)}", cs);
+                    }
+                }
+            }
+        }
+        catch {
+
+        }
+    }
+
 }
