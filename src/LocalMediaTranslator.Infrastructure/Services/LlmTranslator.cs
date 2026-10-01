@@ -69,22 +69,23 @@ public class LlmTranslator : ITranslator {
     }
 
     private async Task<List<TranslationResponseItem>> TranslateBatchAsync(SubtitleItem[] batch, TranslationOptions options, CancellationToken cs) {
-        var payloadItems = batch.Select(x => new TranslationRequestItem(x.Index, x.OriginalText));
+        var sb = new StringBuilder();
+        foreach (var item in batch) {
+            sb.AppendLine($"{item.Index}. {item.OriginalText}");
+        }
 
         var requestBody = new {
             model = options.Model,
             temperature = options.Temperature,
             messages = new[] {
                 new { role = "system", content = options.SystemPrompt },
-                new { role = "user", content = JsonSerializer.Serialize(payloadItems)}
-            },
-            //response_format = new { type = "json_object" }
+                new { role = "user", content = sb.ToString() }
+            }
         };
 
         using var response = await _httpclient.PostAsJsonAsync("v1/chat/completions", requestBody, cs);
         response.EnsureSuccessStatusCode();
 
-        // parse html to get to the llm's answer
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cs));
         var contentString = doc.RootElement
             .GetProperty("choices")[0]
@@ -94,10 +95,36 @@ public class LlmTranslator : ITranslator {
         if (string.IsNullOrWhiteSpace(contentString))
             throw new JsonException("LLM returned empty completion content.");
 
+        return ParseResponseItems(contentString);
+    }
+
+    private static List<TranslationResponseItem> ParseResponseItems(string content) {
+        // Strategy 1: Numbered lines (e.g. "1. Hello", "2: World")
+        var numberedMatches = ParseNumberedLines(content);
+        if (numberedMatches.Count > 0)
+            return numberedMatches;
+
+        // Strategy 2: JSON array fallback
         var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var cleanJson = CleanJsonString(contentString);
+        var cleanJson = CleanJsonString(content);
         var result = JsonSerializer.Deserialize<List<TranslationResponseItem>>(cleanJson, jsonOptions);
-        return result ?? throw new JsonException(message: "Error while parsing JSON results");
+        return result ?? throw new JsonException("Error while parsing JSON results");
+    }
+
+    private static List<TranslationResponseItem> ParseNumberedLines(string content) {
+        var items = new List<TranslationResponseItem>();
+        var lines = content.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var line in lines) {
+            var match = Regex.Match(line, @"^\s*(\d+)[\.\:\-\)\s]+(.*)$");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out var id)) {
+                var text = match.Groups[2].Value.Trim().Trim('"', '\'');
+                if (!string.IsNullOrWhiteSpace(text)) {
+                    items.Add(new TranslationResponseItem(id, text));
+                }
+            }
+        }
+        return items;
     }
 
     private static string CleanJsonString(string content) {

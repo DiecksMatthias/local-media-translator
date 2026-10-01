@@ -1,4 +1,5 @@
 
+using System.Text.Json;
 using LocalMediaTranslator.Core.Models;
 using LocalMediaTranslator.Infrastructure.Services;
 using LocalMediaTranslator.Tests.Helpers;
@@ -174,5 +175,24 @@ public class LlmTranslatorTests {
         var result = await translator.TranslateAsync(items, new TranslationOptions());
 
         Assert.NotNull(result[0].TranslatedText);
+    }
+
+    [Fact]
+    public async Task TranslateAsync_NumberedLinesResponse_ParsesSuccessfully() {
+        var mockLlmContent = "1. Hello world\n2. Goodbye friend";
+        var mockLlmJson = $"{{\"choices\":[{{\"message\":{{\"role\":\"assistant\",\"content\":{JsonSerializer.Serialize(mockLlmContent)}}}}}]}}";
+        var handler = new MockHttpMessageHandler(mockLlmJson);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/") };
+        var translator = new LlmTranslator(client);
+
+        var items = new List<SubtitleItem> {
+            new() { Index = 1, OriginalText = "こんにちは世界" },
+            new() { Index = 2, OriginalText = "さようなら友よ" }
+        };
+
+        var result = await translator.TranslateAsync(items, new TranslationOptions());
+
+        Assert.Equal("Hello world", result[0].TranslatedText);
+        Assert.Equal("Goodbye friend", result[1].TranslatedText);
     }
 }
