@@ -40,6 +40,7 @@ public class MediaTranslationPipeline : IMediaTranslationPipeline {
                 Language = _transcribeOptions.Value.Language,
                 Temperature = _transcribeOptions.Value.Temperature
             };
+
             var subtitleItems = new List<SubtitleItem>();
             await foreach (var item in _transcriber.TranscribeAsync(tempAudioPath, transcribeOptions, cs)) {
                 subtitleItems.Add(item);
@@ -55,19 +56,51 @@ public class MediaTranslationPipeline : IMediaTranslationPipeline {
                 return null;
             }
 
+            // additional safeguard for duplicated voicelines here, ITranscriber should handle most of them
+            // here only to clean up the stray dupes
+            var cleanedItems = new List<SubtitleItem>();
+            SubtitleItem? lastItem = null;
+            int consecutiveCount = 0;
+
+            foreach (var item in subtitleItems) {
+                var text = item.OriginalText?.Trim();
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+
+                if (lastItem is not null && string.Equals(lastItem.OriginalText?.Trim(), text, StringComparison.OrdinalIgnoreCase)) {
+                    consecutiveCount++;
+                    // only allow two repeats at most
+                    if (consecutiveCount > 2)
+                        continue;
+                } else {
+                    consecutiveCount = 1;
+                }
+
+                cleanedItems.Add(item);
+                lastItem = item;
+            }
+
+            if (cleanedItems.Count == 0) {
+                progress?.Report(new PipelineProgressReport(PipelineStep.Transcribing, Percentage: null, Message: "No spoken dialogue detected"));
+                return null;
+            }
+
+            for (int i = 0; i < cleanedItems.Count; i++)
+                cleanedItems[i].Index = i + 1;
+
             // translate
-            var translationMaxValue = subtitleItems.Count;
+            var translationMaxValue = cleanedItems.Count;
             var translationProgressText = "Translating cues (LLM)";
             progress?.Report(new PipelineProgressReport(PipelineStep.Translating, Percentage: 0, Message: translationProgressText));
             IProgress<int>? translationProgress = progress is null
                 ? null
                 : new Progress<int>(processedCount => {
                     progress.Report(new PipelineProgressReport(
-                        PipelineStep.Translating, ProcessedItems: processedCount, TotalItems: subtitleItems.Count,
-                        Percentage: subtitleItems.Count > 0 ? (double)processedCount / subtitleItems.Count * 100.0 : 0,
-                        Message: $"Translating cues ({processedCount}/{subtitleItems.Count})"));
+                        PipelineStep.Translating, ProcessedItems: processedCount, TotalItems: cleanedItems.Count,
+                        Percentage: cleanedItems.Count > 0 ? (double)processedCount / cleanedItems.Count * 100.0 : 0,
+                        Message: $"Translating cues ({processedCount}/{cleanedItems.Count})"));
                 });
-            var translatedItems = await _translator.TranslateAsync(subtitleItems, _translationOptions.Value, translationProgress, cs);
+            var translatedItems = await _translator.TranslateAsync(cleanedItems, _translationOptions.Value, translationProgress, cs);
 
             // write
             progress?.Report(new PipelineProgressReport(PipelineStep.WritingSubtitles, Message: "Writing subtitle file"));

@@ -82,6 +82,35 @@ public class HttpWhisperTranscriberTests {
     }
 
     [Fact]
+    public async Task TranscribeAsync_SendsAntiHallucinationAndVadParameters() {
+        var mockJson = """{"task":"transcribe","language":"ja","duration":1.0,"text":"test","segments":[]}""";
+        var handler = new MockHttpMessageHandler(mockJson);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        var tempFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.wav");
+        await File.WriteAllBytesAsync(tempFile, new byte[] { 0x01, 0x02 });
+
+        try {
+            var options = new TranscriptionOptions { Model = "Systran/faster-whisper-large-v3", Language = "ja" };
+            await foreach (var _ in transcriber.TranscribeAsync(tempFile, options)) { }
+
+            Assert.NotNull(handler.LastRequestBody);
+            Assert.Contains("name=vad_filter", handler.LastRequestBody);
+            Assert.Contains("true", handler.LastRequestBody);
+            Assert.Contains("name=condition_on_previous_text", handler.LastRequestBody);
+            Assert.Contains("false", handler.LastRequestBody);
+            Assert.Contains("name=compression_ratio_threshold", handler.LastRequestBody);
+            Assert.Contains("2.4", handler.LastRequestBody);
+            Assert.Contains("name=no_speech_threshold", handler.LastRequestBody);
+            Assert.Contains("0.6", handler.LastRequestBody);
+        }
+        finally {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
     public async Task TranscribeAsync_CudaOutOfMemory_ThrowsOutOfMemoryException() {
         var mockError = "RuntimeError: CUDA failed with error out of memory";
         var handler = new MockHttpMessageHandler(mockError, System.Net.HttpStatusCode.InternalServerError);

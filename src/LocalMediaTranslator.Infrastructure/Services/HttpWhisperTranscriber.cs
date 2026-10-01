@@ -30,6 +30,13 @@ public class HttpWhisperTranscriber : ITranscriber {
         form.Add(new StringContent(options.Language ?? "ja"), "language");
         form.Add(new StringContent("0.0"), "temperature");
 
+        // whisper is hallucinating additional spoken word when there is no audio 
+        // and these parameters should stop it from doing that
+        form.Add(new StringContent("true"), "vad_filter");
+        form.Add(new StringContent("false"), "condition_on_previous_text");
+        form.Add(new StringContent("2.4"), "compression_ratio_threshold");
+        form.Add(new StringContent("0.6"), "no_speech_threshold");
+
         using var response = await _httpClient.PostAsync("v1/audio/transcriptions", form, cs);
         if (!response.IsSuccessStatusCode) {
             var errorBody = await response.Content.ReadAsStringAsync(cs);
