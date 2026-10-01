@@ -36,6 +36,8 @@ public class HttpWhisperTranscriber : ITranscriber {
         form.Add(new StringContent("false"), "condition_on_previous_text");
         form.Add(new StringContent("2.4"), "compression_ratio_threshold");
         form.Add(new StringContent("0.6"), "no_speech_threshold");
+        form.Add(new StringContent("2.0"), "hallucination_silence_threshold");
+        form.Add(new StringContent("1.2"), "repetition_penalty");
 
         using var response = await _httpClient.PostAsync("v1/audio/transcriptions", form, cs);
         if (!response.IsSuccessStatusCode) {

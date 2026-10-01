@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
 using LocalMediaTranslator.Core.Models.Enums;
@@ -5,7 +6,8 @@ using Microsoft.Extensions.Options;
 
 namespace LocalMediaTranslator.Infrastructure.Services;
 
-public class MediaTranslationPipeline : IMediaTranslationPipeline {
+public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
+    private static readonly Regex InCueRepetitionRegex = new(@"([^、,。\s!！?？]+[、,。\s!！?？]*)\1{2,}", RegexOptions.Compiled);
     private readonly IAudioExtractor _audioExtractor;
     private readonly ITranscriber _transcriber;
     private readonly ITranslator _translator;
@@ -57,7 +59,7 @@ public class MediaTranslationPipeline : IMediaTranslationPipeline {
             }
 
             // additional safeguard for duplicated voicelines here, ITranscriber should handle most of them
-            // here only to clean up the stray dupes
+            // here only to clean up the stray dupes and in-cue repetitions (e.g. ちょ、ちょ、ちょ、...)
             var cleanedItems = new List<SubtitleItem>();
             SubtitleItem? lastItem = null;
             int consecutiveCount = 0;
@@ -67,7 +69,14 @@ public class MediaTranslationPipeline : IMediaTranslationPipeline {
                 if (string.IsNullOrWhiteSpace(text))
                     continue;
 
-                if (lastItem is not null && string.Equals(lastItem.OriginalText?.Trim(), text, StringComparison.OrdinalIgnoreCase)) {
+                // Reduce in-cue repeated words/particles (e.g. ちょ、 repeated 3+ times down to 2)
+                var reducedText = InCueRepetitionRegex.Replace(text, "$1$1").Trim();
+                if (string.IsNullOrWhiteSpace(reducedText))
+                    continue;
+
+                item.OriginalText = reducedText;
+
+                if (lastItem is not null && string.Equals(lastItem.OriginalText?.Trim(), reducedText, StringComparison.OrdinalIgnoreCase)) {
                     consecutiveCount++;
                     // only allow two repeats at most
                     if (consecutiveCount > 2)

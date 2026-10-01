@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
 using LocalMediaTranslator.Infrastructure.Models;
@@ -30,11 +31,26 @@ public class LlmTranslator : ITranslator {
 
             try {
                 var translations = await TranslateBatchAsync(batch, options, cs);
-                var translationMap = translations.ToDictionary(t => t.Id, t => t.Translation);
+                var translationMap = new Dictionary<int, string>();
+                foreach (var t in translations) {
+                    if (!string.IsNullOrWhiteSpace(t.Translation)) {
+                        translationMap[t.Id] = t.Translation;
+                    }
+                }
 
+                // Match by ID
                 foreach (var item in batch) {
                     if (translationMap.TryGetValue(item.Index, out var translatedText)) {
                         item.TranslatedText = translatedText;
+                    }
+                }
+
+                // Positional fallback if IDs were missing/misaligned but item count matches
+                if (batch.All(x => x.TranslatedText == null) && translations.Count == batch.Length) {
+                    for (int i = 0; i < batch.Length; i++) {
+                        if (!string.IsNullOrWhiteSpace(translations[i].Translation)) {
+                            batch[i].TranslatedText = translations[i].Translation;
+                        }
                     }
                 }
             }
@@ -57,6 +73,7 @@ public class LlmTranslator : ITranslator {
 
         var requestBody = new {
             model = options.Model,
+            temperature = options.Temperature,
             messages = new[] {
                 new { role = "system", content = options.SystemPrompt },
                 new { role = "user", content = JsonSerializer.Serialize(payloadItems)}
@@ -89,20 +106,26 @@ public class LlmTranslator : ITranslator {
 
         var start = content.IndexOf('[');
         if (start == -1)
-            return content.Trim(); // fallback when no array brackets are found
+            return content.Trim();
 
         var end = content.LastIndexOf(']');
-
-        // case 1: properly formed array
+        string json;
         if (end > start)
-            return content.Substring(start, end - start + 1);
+            json = content.Substring(start, end - start + 1);
+        else {
+            var lastBrace = content.LastIndexOf('}');
+            if (lastBrace > start)
+                json = content.Substring(start, lastBrace - start + 1) + "]";
+            else
+                json = content.Substring(start);
+        }
 
-        // case 2: array properly starting but cut off end
-        var lastBrace = content.LastIndexOf('}');
-        if (lastBrace > start)
-            return content.Substring(start, lastBrace - start + 1) + "]";
+        // Repair malformed {"id: 18", ...} -> {"id": 18, ...}
+        json = Regex.Replace(json, @"\{\s*""id:\s*(\d+)""", @"{""id"": $1");
+        // Remove trailing commas before ] or }
+        json = Regex.Replace(json, @",\s*([\]\}])", "$1");
 
-        return content.Substring(start);
+        return json;
     }
 
     public async Task UnloadAsync(CancellationToken cs = default) {
@@ -117,9 +140,24 @@ public class LlmTranslator : ITranslator {
                 if (doc.RootElement.TryGetProperty("models", out var models)) {
                     foreach (var model in models.EnumerateArray()) {
                         if (model.TryGetProperty("name", out var modelName)) {
-                            var payload = new { model = modelName.GetString(), keep_alive = 0 };
-                            await _httpclient.PostAsJsonAsync("api/generate", payload, cs);
+                            var nameStr = modelName.GetString();
+                            if (!string.IsNullOrWhiteSpace(nameStr)) {
+                                var payload = new { model = nameStr, keep_alive = 0 };
+                                await _httpclient.PostAsJsonAsync("api/generate", payload, cs);
+                            }
                         }
+                    }
+                }
+            }
+
+            // Wait until Ollama completely unloads models from VRAM (up to 10s)
+            for (int i = 0; i < 20; i++) {
+                await Task.Delay(500, cs);
+                using var checkPs = await _httpclient.GetAsync("api/ps", cs);
+                if (checkPs.IsSuccessStatusCode) {
+                    using var checkDoc = JsonDocument.Parse(await checkPs.Content.ReadAsStreamAsync(cs));
+                    if (checkDoc.RootElement.TryGetProperty("models", out var loadedModels) && loadedModels.GetArrayLength() == 0) {
+                        break;
                     }
                 }
             }

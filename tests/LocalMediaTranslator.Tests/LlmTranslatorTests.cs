@@ -123,4 +123,56 @@ public class LlmTranslatorTests {
         Assert.Equal("Completed item", result[0].TranslatedText);
         Assert.Null(result[1].TranslatedText);
     }
+
+    [Fact]
+    public async Task TranslateAsync_SendsConfiguredTemperatureInPayload() {
+        var mockLlmJson = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"[{\\\"id\\\":1,\\\"translation\\\":\\\"Test\\\"}]\"}}]}";
+        var handler = new MockHttpMessageHandler(mockLlmJson);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/") };
+        var translator = new LlmTranslator(client);
+
+        var items = new List<SubtitleItem> {
+            new() { Index = 1, OriginalText = "テスト" }
+        };
+
+        var options = new TranslationOptions { Temperature = 0.0f };
+        await translator.TranslateAsync(items, options);
+
+        Assert.NotNull(handler.LastRequestBody);
+        Assert.Contains("\"temperature\":0", handler.LastRequestBody);
+    }
+
+    [Fact]
+    public async Task TranslateAsync_MalformedIdKeyAndTrailingCommas_RepairsAndParsesSuccessfully() {
+        var mockLlmJson = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"[{\\\"id: 1\\\", \\\"translation\\\": \\\"Hello\\\"}, {\\\"id\\\": 2, \\\"translation\\\": \\\"World\\\"}, ]\"}}]}";
+        var handler = new MockHttpMessageHandler(mockLlmJson);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/") };
+        var translator = new LlmTranslator(client);
+
+        var items = new List<SubtitleItem> {
+            new() { Index = 1, OriginalText = "こんにちは" },
+            new() { Index = 2, OriginalText = "世界" }
+        };
+
+        var result = await translator.TranslateAsync(items, new TranslationOptions());
+
+        Assert.Equal("Hello", result[0].TranslatedText);
+        Assert.Equal("World", result[1].TranslatedText);
+    }
+
+    [Fact]
+    public async Task TranslateAsync_DuplicateIdsInResponse_DoesNotThrowAndPopulatesTranslations() {
+        var mockLlmJson = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"[{\\\"id\\\": 1, \\\"translation\\\": \\\"First\\\"}, {\\\"id\\\": 1, \\\"translation\\\": \\\"Duplicate\\\"}]\"}}]}";
+        var handler = new MockHttpMessageHandler(mockLlmJson);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/") };
+        var translator = new LlmTranslator(client);
+
+        var items = new List<SubtitleItem> {
+            new() { Index = 1, OriginalText = "最初" }
+        };
+
+        var result = await translator.TranslateAsync(items, new TranslationOptions());
+
+        Assert.NotNull(result[0].TranslatedText);
+    }
 }

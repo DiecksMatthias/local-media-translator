@@ -151,4 +151,59 @@ public class MediaTranslationPipelineTests {
         var result = await pipeline.ExecuteAsync(options);
         Assert.Null(result);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_InCueRepetition_ReducesAndDeduplicates() {
+        var rawCues = new List<SubtitleItem> {
+            new() { Index = 1, Start = TimeSpan.FromSeconds(0), End = TimeSpan.FromSeconds(1), OriginalText = "ちょ、ちょ、ちょ、ちょ、ちょ、" },
+            new() { Index = 2, Start = TimeSpan.FromSeconds(1), End = TimeSpan.FromSeconds(2), OriginalText = "ちょ、ちょ、ちょ、ちょ、ちょ、ちょ、ちょ、" },
+            new() { Index = 3, Start = TimeSpan.FromSeconds(2), End = TimeSpan.FromSeconds(3), OriginalText = "ちょ、ちょ、ちょ、" },
+            new() { Index = 4, Start = TimeSpan.FromSeconds(3), End = TimeSpan.FromSeconds(4), OriginalText = "痛い痛い痛い痛い痛い" },
+            new() { Index = 5, Start = TimeSpan.FromSeconds(4), End = TimeSpan.FromSeconds(5), OriginalText = "大丈夫ですか" }
+        };
+
+        var extractor = new FakeAudioExtractor();
+        var transcriber = new FakeTranscriber(rawCues);
+        var translator = new FakeTranslator();
+        var writer = new FakeSubtitleWriter();
+
+        var pipeline = new MediaTranslationPipeline(
+            extractor,
+            transcriber,
+            translator,
+            writer,
+            Options.Create(new TranslationOptions()),
+            Options.Create(new TranscriptionOptions())
+        );
+
+        var tempOutput = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.srt");
+
+        try {
+            var options = new PipelineExecutionOptions {
+                MediaFilePath = "fake.mp4",
+                OutputSrtPath = tempOutput
+            };
+
+            var result = await pipeline.ExecuteAsync(options);
+
+            Assert.NotNull(result);
+            Assert.NotNull(translator.LastReceivedItems);
+
+            // Cues 1 & 2 reduce to "ちょ、ちょ、" (kept as 2 repeats max, cue 3 dropped)
+            // Cue 4 reduces to "痛い痛い"
+            // Cue 5 kept as "大丈夫ですか"
+            Assert.Equal(4, translator.LastReceivedItems.Count);
+            Assert.Equal("ちょ、ちょ、", translator.LastReceivedItems[0].OriginalText);
+            Assert.Equal(1, translator.LastReceivedItems[0].Index);
+            Assert.Equal("ちょ、ちょ、", translator.LastReceivedItems[1].OriginalText);
+            Assert.Equal(2, translator.LastReceivedItems[1].Index);
+            Assert.Equal("痛い痛い", translator.LastReceivedItems[2].OriginalText);
+            Assert.Equal(3, translator.LastReceivedItems[2].Index);
+            Assert.Equal("大丈夫ですか", translator.LastReceivedItems[3].OriginalText);
+            Assert.Equal(4, translator.LastReceivedItems[3].Index);
+        }
+        finally {
+            if (File.Exists(tempOutput)) File.Delete(tempOutput);
+        }
+    }
 }

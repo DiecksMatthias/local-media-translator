@@ -104,6 +104,10 @@ public class HttpWhisperTranscriberTests {
             Assert.Contains("2.4", handler.LastRequestBody);
             Assert.Contains("name=no_speech_threshold", handler.LastRequestBody);
             Assert.Contains("0.6", handler.LastRequestBody);
+            Assert.Contains("name=hallucination_silence_threshold", handler.LastRequestBody);
+            Assert.Contains("2.0", handler.LastRequestBody);
+            Assert.Contains("name=repetition_penalty", handler.LastRequestBody);
+            Assert.Contains("1.2", handler.LastRequestBody);
         }
         finally {
             if (File.Exists(tempFile)) File.Delete(tempFile);
