@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
 using LocalMediaTranslator.Core.Models.Enums;
+using LocalMediaTranslator.Core.Utilities;
 using Microsoft.Extensions.Options;
 
 namespace LocalMediaTranslator.Infrastructure.Services;
@@ -81,7 +82,8 @@ public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
                     // only allow two repeats at most
                     if (consecutiveCount > 2)
                         continue;
-                } else {
+                }
+                else {
                     consecutiveCount = 1;
                 }
 
@@ -120,6 +122,10 @@ public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
                     TargetedLanguage = LanguageCode.English, // hardcoded for now instead of default value in subtitletrack class so i can add a command option later
                     Items = translatedItems.ToList()
                 };
+
+                // normalize subtitle display durations and overlapping
+                SubtitleTimingNormalizer.NormalizeTimestamps(track);
+
                 await _subtitleWriter.WriteAsync(track, fileStream, dualLanguage: options.DualLanguage, cs: cs);
                 progress?.Report(new PipelineProgressReport(PipelineStep.WritingSubtitles, Percentage: 100, Message: "Writing subtitle file"));
             }

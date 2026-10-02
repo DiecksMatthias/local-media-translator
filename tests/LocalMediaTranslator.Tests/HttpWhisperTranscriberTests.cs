@@ -103,7 +103,7 @@ public class HttpWhisperTranscriberTests {
             Assert.Contains("name=compression_ratio_threshold", handler.LastRequestBody);
             Assert.Contains("2.4", handler.LastRequestBody);
             Assert.Contains("name=no_speech_threshold", handler.LastRequestBody);
-            Assert.Contains("0.6", handler.LastRequestBody);
+            Assert.Contains("0.85", handler.LastRequestBody);
             Assert.Contains("name=hallucination_silence_threshold", handler.LastRequestBody);
             Assert.Contains("2.0", handler.LastRequestBody);
             Assert.Contains("name=repetition_penalty", handler.LastRequestBody);

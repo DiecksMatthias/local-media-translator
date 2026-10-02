@@ -2,6 +2,7 @@ using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
 using CliWrap;
 using System.Text;
+using CliWrap.Builders;
 
 namespace LocalMediaTranslator.Infrastructure.Services;
 
@@ -23,14 +24,21 @@ public class FFmpegAudioExtractor : IAudioExtractor {
         var stdErrBuffer = new StringBuilder();
         try {
             var result = await Cli.Wrap("ffmpeg")
-                            .WithArguments(args => args
-                                .Add("-y")
-                                .Add("-i").Add(videoPath)
-                                .Add("-vn")
-                                .Add("-ar").Add(options.SampleRate)
-                                .Add("-ac").Add(options.Channels)
-                                .Add("-c:a").Add(options.Codec)
-                                .Add(outputPath))
+                            .WithArguments(args => {
+                                args.Add("-y")
+                                    .Add("-i").Add(videoPath)
+                                    .Add("-vn");
+
+                                // check for flag and add parameters for higher quality audio output
+                                // to increase whisperer transcribing quality
+                                if (options.EnableVoiceFilter)
+                                    args.Add("-af").Add("highpass=f=150,lowpass=f=4000,afftdn=nf=-20");
+
+                                args.Add("-ar").Add(options.SampleRate)
+                                    .Add("-ac").Add(options.Channels)
+                                    .Add("-c:a").Add(options.Codec)
+                                    .Add(outputPath);
+                            })
                             .WithStandardErrorPipe(PipeTarget.ToStringBuilder(stdErrBuffer))
                             .ExecuteAsync(cs);
         }

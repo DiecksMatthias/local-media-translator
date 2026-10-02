@@ -6,4 +6,5 @@ public class AudioExtractionOptions {
     public int SampleRate { get; set; } = 16000;
     public int Channels { get; set; } = 1;
     public AudioCodec Codec { get; set; } = AudioCodec.pcm_s16le;
+    public bool EnableVoiceFilter { get; set; } = true;
 }

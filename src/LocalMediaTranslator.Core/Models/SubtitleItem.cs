@@ -3,7 +3,7 @@ namespace LocalMediaTranslator.Core.Models;
 public class SubtitleItem {
     public int Index { get; set; }
     public TimeSpan Start { get; init; }
-    public TimeSpan End { get; init; }
+    public TimeSpan End { get; set; }
     public required string OriginalText { get; set; }
     public string? TranslatedText { get; set; }
 

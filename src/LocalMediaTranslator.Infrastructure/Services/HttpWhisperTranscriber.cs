@@ -32,10 +32,18 @@ public class HttpWhisperTranscriber : ITranscriber {
 
         // whisper is hallucinating additional spoken word when there is no audio 
         // and these parameters should stop it from doing that
+        form.Add(new StringContent("true"), "word_timestamps");
         form.Add(new StringContent("true"), "vad_filter");
+
+        // additional vad parameters to decrease duration of segments if there is long silence between sentences
+        form.Add(new StringContent("threshold:0.30"), "vad_parameters");
+        form.Add(new StringContent("min_speech_duration_ms:150"), "vad_parameters");
+        form.Add(new StringContent("min_silence_duration_ms:800"), "vad_parameters");
+        form.Add(new StringContent("speech_pad_ms:400"), "vad_parameters");
+
         form.Add(new StringContent("false"), "condition_on_previous_text");
         form.Add(new StringContent("2.4"), "compression_ratio_threshold");
-        form.Add(new StringContent("0.6"), "no_speech_threshold");
+        form.Add(new StringContent("0.85"), "no_speech_threshold");
         form.Add(new StringContent("2.0"), "hallucination_silence_threshold");
         form.Add(new StringContent("1.2"), "repetition_penalty");
 
@@ -56,9 +64,20 @@ public class HttpWhisperTranscriber : ITranscriber {
             var text = seg.GetProperty("text").GetString()?.Trim();
             if (string.IsNullOrWhiteSpace(text))
                 continue;
+
             var startSeconds = seg.GetProperty("start").GetDouble();
             var endSeconds = seg.GetProperty("end").GetDouble();
 
+            // check if word-level timestamps are present
+            if (seg.TryGetProperty("words", out var wordsElement)
+               && wordsElement.ValueKind == JsonValueKind.Array
+               && wordsElement.GetArrayLength() > 0) {
+                var count = wordsElement.GetArrayLength();
+                var lastWord = wordsElement[count - 1];
+                if (lastWord.TryGetProperty("end", out var lastWordEnd))
+                    // add a 300ms buffer 
+                    endSeconds = Math.Min(lastWordEnd.GetDouble() + 0.3, endSeconds);
+            }
             yield return new SubtitleItem {
                 Index = index++,
                 Start = TimeSpan.FromSeconds(startSeconds),
