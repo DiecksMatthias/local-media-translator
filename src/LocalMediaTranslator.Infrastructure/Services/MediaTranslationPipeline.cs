@@ -45,6 +45,11 @@ public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
             };
 
             var subtitleItems = new List<SubtitleItem>();
+
+            // addition message before transcibing on a http connection because otherwises the process might seem stuck
+            if (_transcriber is not LocalWhisperTranscriber)
+                progress?.Report(new PipelineProgressReport(PipelineStep.Transcribing, Percentage: null, Message: "Transcribing audio (Whisper on remote GPU)..."));
+
             await foreach (var item in _transcriber.TranscribeAsync(tempAudioPath, transcribeOptions, cs)) {
                 subtitleItems.Add(item);
                 progress?.Report(new PipelineProgressReport(PipelineStep.Transcribing, Percentage: null, Message: $"Transcribing audio (Whisper) - {subtitleItems.Count} cues"));
@@ -100,9 +105,12 @@ public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
                 cleanedItems[i].Index = i + 1;
 
             // translate
-            var translationMaxValue = cleanedItems.Count;
-            var translationProgressText = "Translating cues (LLM)";
-            progress?.Report(new PipelineProgressReport(PipelineStep.Translating, Percentage: 0, Message: translationProgressText));
+            progress?.Report(new PipelineProgressReport(
+                PipelineStep.Translating,
+                ProcessedItems: 0,
+                TotalItems: cleanedItems.Count,
+                Percentage: 0,
+                Message: $"Translating cues (0/{cleanedItems.Count})"));
             IProgress<int>? translationProgress = progress is null
                 ? null
                 : new Progress<int>(processedCount => {
