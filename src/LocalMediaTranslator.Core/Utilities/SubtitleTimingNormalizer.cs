@@ -42,4 +42,42 @@ public static class SubtitleTimingNormalizer {
         }
         return;
     }
+    public static List<SubtitleItem> MergedAdjacentContext(IReadOnlyList<SubtitleItem> items, double maxGapMs = 400, double maxCombinedSeconds = 6.0) {
+        if (items is null || items.Count == 0)
+            return [];
+
+        var merged = new List<SubtitleItem>();
+        var current = items[0];
+
+        // japanese sentence end markers
+        // for now only japanese
+        // later TODO maybe add a enum to adjust to other languages if needed
+        char[] sentenceTerminators = ['。', '！', '？', '!', '?', '…'];
+
+        for (int i = 1; i < items.Count; i++) {
+            var next = items[i];
+            var gap = (next.Start - current.End).TotalMilliseconds;
+            var totalDuration = (next.End - current.Start).TotalSeconds;
+
+            var endWithPunctuation = current.OriginalText is not null
+                                     && sentenceTerminators.Any(t => current.OriginalText.TrimEnd().EndsWith(t));
+
+            // condition: short gap, under max time limit and sentence didn't end
+            if (gap <= maxGapMs && totalDuration <= maxCombinedSeconds && !endWithPunctuation) {
+                current.End = next.End;
+                current.OriginalText = $"{current.OriginalText} {next.OriginalText}".Trim();
+            }
+            else {
+                merged.Add(current);
+                current = next;
+            }
+        }
+        merged.Add(current);
+
+        // re-index items
+        for (int i = 0; i < merged.Count; i++)
+            merged[i].Index = i + 1;
+
+        return merged;
+    }
 }

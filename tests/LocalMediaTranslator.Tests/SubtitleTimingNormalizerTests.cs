@@ -125,4 +125,60 @@ public class SubtitleTimingNormalizerTests {
         var item = track.Items[0];
         Assert.Equal(TimeSpan.FromSeconds(1.5), item.End); // 5 chars -> clamped to min 1.5s
     }
+
+    [Fact]
+    public void MergedAdjacentContext_NullOrEmpty_ReturnsEmptyList() {
+        Assert.Empty(SubtitleTimingNormalizer.MergedAdjacentContext(null!));
+        Assert.Empty(SubtitleTimingNormalizer.MergedAdjacentContext([]));
+    }
+
+    [Fact]
+    public void MergedAdjacentContext_ShortGapAndNoPunctuation_MergesAndReindexes() {
+        var items = new List<SubtitleItem> {
+            new() { Index = 1, Start = TimeSpan.FromSeconds(1.0), End = TimeSpan.FromSeconds(2.0), OriginalText = "俺さあ" },
+            new() { Index = 2, Start = TimeSpan.FromSeconds(2.2), End = TimeSpan.FromSeconds(3.5), OriginalText = "北海道に" }, // gap = 200ms -> merged
+            new() { Index = 3, Start = TimeSpan.FromSeconds(5.0), End = TimeSpan.FromSeconds(6.0), OriginalText = "行くんだ" }  // gap = 1500ms -> not merged
+        };
+
+        var result = SubtitleTimingNormalizer.MergedAdjacentContext(items);
+
+        Assert.Equal(2, result.Count);
+
+        Assert.Equal(1, result[0].Index);
+        Assert.Equal("俺さあ 北海道に", result[0].OriginalText);
+        Assert.Equal(TimeSpan.FromSeconds(1.0), result[0].Start);
+        Assert.Equal(TimeSpan.FromSeconds(3.5), result[0].End);
+
+        Assert.Equal(2, result[1].Index);
+        Assert.Equal("行くんだ", result[1].OriginalText);
+        Assert.Equal(TimeSpan.FromSeconds(5.0), result[1].Start);
+        Assert.Equal(TimeSpan.FromSeconds(6.0), result[1].End);
+    }
+
+    [Fact]
+    public void MergedAdjacentContext_SentenceTerminators_DoesNotMerge() {
+        var items = new List<SubtitleItem> {
+            new() { Index = 1, Start = TimeSpan.FromSeconds(1.0), End = TimeSpan.FromSeconds(2.0), OriginalText = "こんにちは。" },
+            new() { Index = 2, Start = TimeSpan.FromSeconds(2.1), End = TimeSpan.FromSeconds(3.0), OriginalText = "元気ですか？" },
+            new() { Index = 3, Start = TimeSpan.FromSeconds(3.1), End = TimeSpan.FromSeconds(4.0), OriginalText = "はい！" },
+            new() { Index = 4, Start = TimeSpan.FromSeconds(4.1), End = TimeSpan.FromSeconds(5.0), OriginalText = "そう…" },
+            new() { Index = 5, Start = TimeSpan.FromSeconds(5.1), End = TimeSpan.FromSeconds(6.0), OriginalText = "終わり!" }
+        };
+
+        var result = SubtitleTimingNormalizer.MergedAdjacentContext(items);
+
+        Assert.Equal(5, result.Count);
+    }
+
+    [Fact]
+    public void MergedAdjacentContext_ExceedingMaxCombinedDuration_DoesNotMerge() {
+        var items = new List<SubtitleItem> {
+            new() { Index = 1, Start = TimeSpan.FromSeconds(0.0), End = TimeSpan.FromSeconds(4.0), OriginalText = "長いセリフの前半部分で" },
+            new() { Index = 2, Start = TimeSpan.FromSeconds(4.1), End = TimeSpan.FromSeconds(7.0), OriginalText = "後半部分もかなり長いです" } // total = 7.0s > 6.0s
+        };
+
+        var result = SubtitleTimingNormalizer.MergedAdjacentContext(items, maxCombinedSeconds: 6.0);
+
+        Assert.Equal(2, result.Count);
+    }
 }

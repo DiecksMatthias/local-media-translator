@@ -95,7 +95,6 @@ public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
                 cleanedItems.Add(item);
                 lastItem = item;
             }
-
             if (cleanedItems.Count == 0) {
                 progress?.Report(new PipelineProgressReport(PipelineStep.Transcribing, Percentage: null, Message: "No spoken dialogue detected"));
                 return null;
@@ -103,23 +102,24 @@ public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
 
             for (int i = 0; i < cleanedItems.Count; i++)
                 cleanedItems[i].Index = i + 1;
+            var mergedItems = SubtitleTimingNormalizer.MergedAdjacentContext(cleanedItems);
 
             // translate
             progress?.Report(new PipelineProgressReport(
                 PipelineStep.Translating,
                 ProcessedItems: 0,
-                TotalItems: cleanedItems.Count,
+                TotalItems: mergedItems.Count,
                 Percentage: 0,
-                Message: $"Translating cues (0/{cleanedItems.Count})"));
+                Message: $"Translating cues (0/{mergedItems.Count})"));
             IProgress<int>? translationProgress = progress is null
                 ? null
                 : new Progress<int>(processedCount => {
                     progress.Report(new PipelineProgressReport(
-                        PipelineStep.Translating, ProcessedItems: processedCount, TotalItems: cleanedItems.Count,
-                        Percentage: cleanedItems.Count > 0 ? (double)processedCount / cleanedItems.Count * 100.0 : 0,
-                        Message: $"Translating cues ({processedCount}/{cleanedItems.Count})"));
+                        PipelineStep.Translating, ProcessedItems: processedCount, TotalItems: mergedItems.Count,
+                        Percentage: mergedItems.Count > 0 ? (double)processedCount / mergedItems.Count * 100.0 : 0,
+                        Message: $"Translating cues ({processedCount}/{mergedItems.Count})"));
                 });
-            var translatedItems = await _translator.TranslateAsync(cleanedItems, _translationOptions.Value, translationProgress, cs);
+            var translatedItems = await _translator.TranslateAsync(mergedItems, _translationOptions.Value, translationProgress, cs);
 
             // write
             progress?.Report(new PipelineProgressReport(PipelineStep.WritingSubtitles, Message: "Writing subtitle file"));

@@ -96,26 +96,22 @@ public class MediaTranslationPipelineTests {
             Assert.NotNull(result);
             Assert.NotNull(translator.LastReceivedItems);
 
-            // Should keep: "こんにちは" (x2), "世界" (x2), "さようなら" (x1) = 5 items
-            Assert.Equal(5, translator.LastReceivedItems.Count);
+            // Deduplication leaves: "こんにちは" (x2), "世界" (x2), "さようなら" (x1)
+            // Adjacent merging merges back-to-back unpunctuated cues:
+            // -> "こんにちは こんにちは", "世界 世界", "さようなら" = 3 items
+            Assert.Equal(3, translator.LastReceivedItems.Count);
 
-            Assert.Equal("こんにちは", translator.LastReceivedItems[0].OriginalText);
+            Assert.Equal("こんにちは こんにちは", translator.LastReceivedItems[0].OriginalText);
             Assert.Equal(1, translator.LastReceivedItems[0].Index);
 
-            Assert.Equal("こんにちは", translator.LastReceivedItems[1].OriginalText);
+            Assert.Equal("世界 世界", translator.LastReceivedItems[1].OriginalText);
             Assert.Equal(2, translator.LastReceivedItems[1].Index);
 
-            Assert.Equal("世界", translator.LastReceivedItems[2].OriginalText);
+            Assert.Equal("さようなら", translator.LastReceivedItems[2].OriginalText);
             Assert.Equal(3, translator.LastReceivedItems[2].Index);
 
-            Assert.Equal("世界", translator.LastReceivedItems[3].OriginalText);
-            Assert.Equal(4, translator.LastReceivedItems[3].Index);
-
-            Assert.Equal("さようなら", translator.LastReceivedItems[4].OriginalText);
-            Assert.Equal(5, translator.LastReceivedItems[4].Index);
-
             Assert.NotNull(writer.LastWrittenTrack);
-            Assert.Equal(5, writer.LastWrittenTrack.Items.Count);
+            Assert.Equal(3, writer.LastWrittenTrack.Items.Count);
         }
         finally {
             if (File.Exists(tempOutput)) File.Delete(tempOutput);
@@ -189,18 +185,13 @@ public class MediaTranslationPipelineTests {
             Assert.NotNull(result);
             Assert.NotNull(translator.LastReceivedItems);
 
-            // Cues 1 & 2 reduce to "ちょ、ちょ、" (kept as 2 repeats max, cue 3 dropped)
-            // Cue 4 reduces to "痛い痛い"
-            // Cue 5 kept as "大丈夫ですか"
-            Assert.Equal(4, translator.LastReceivedItems.Count);
-            Assert.Equal("ちょ、ちょ、", translator.LastReceivedItems[0].OriginalText);
+            // Cues 1 & 2 reduce to "ちょ、ちょ、" (cue 3 dropped), then merge into "ちょ、ちょ、 ちょ、ちょ、"
+            // Cues 4 & 5 ("痛い痛い", "大丈夫ですか") merge into "痛い痛い 大丈夫ですか"
+            Assert.Equal(2, translator.LastReceivedItems.Count);
+            Assert.Equal("ちょ、ちょ、 ちょ、ちょ、", translator.LastReceivedItems[0].OriginalText);
             Assert.Equal(1, translator.LastReceivedItems[0].Index);
-            Assert.Equal("ちょ、ちょ、", translator.LastReceivedItems[1].OriginalText);
+            Assert.Equal("痛い痛い 大丈夫ですか", translator.LastReceivedItems[1].OriginalText);
             Assert.Equal(2, translator.LastReceivedItems[1].Index);
-            Assert.Equal("痛い痛い", translator.LastReceivedItems[2].OriginalText);
-            Assert.Equal(3, translator.LastReceivedItems[2].Index);
-            Assert.Equal("大丈夫ですか", translator.LastReceivedItems[3].OriginalText);
-            Assert.Equal(4, translator.LastReceivedItems[3].Index);
         }
         finally {
             if (File.Exists(tempOutput)) File.Delete(tempOutput);

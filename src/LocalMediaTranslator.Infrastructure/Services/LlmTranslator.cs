@@ -25,12 +25,15 @@ public class LlmTranslator : ITranslator {
         if (items.Count == 0)
             return items;
 
+        var contextHistory = new List<SubtitleItem>();
         int processCount = 0;
         foreach (var batch in items.Chunk(options.BatchSize)) {
             cs.ThrowIfCancellationRequested();
 
             try {
-                var translations = await TranslateBatchAsync(batch, options, cs);
+                // pass last 3 items as context
+                var recentContext = contextHistory.TakeLast(3).ToList();
+                var translations = await TranslateBatchAsync(batch, recentContext, options, cs);
                 var translationMap = new Dictionary<int, string>();
                 foreach (var t in translations) {
                     if (!string.IsNullOrWhiteSpace(t.Translation)) {
@@ -53,6 +56,8 @@ public class LlmTranslator : ITranslator {
                         }
                     }
                 }
+                // add freshly translated items to the history so they can lead as context for the next batch
+                contextHistory.AddRange(batch);
             }
             catch (Exception) when (!cs.IsCancellationRequested) {
                 // Graceful batch fallback: If LLM returns unparseable output or network blips for this batch,
@@ -68,8 +73,22 @@ public class LlmTranslator : ITranslator {
         return items;
     }
 
-    private async Task<List<TranslationResponseItem>> TranslateBatchAsync(SubtitleItem[] batch, TranslationOptions options, CancellationToken cs) {
+    private async Task<List<TranslationResponseItem>> TranslateBatchAsync(SubtitleItem[] batch, IReadOnlyList<SubtitleItem>? context, TranslationOptions options, CancellationToken cs) {
+
         var sb = new StringBuilder();
+
+        // add recent translated batch as reference context
+        // to keep contextual dialogues properly translated
+        if (context is { Count: > 0 }) {
+            sb.AppendLine("### Context from preceding dialogue (for reference only, do not translate):");
+            foreach (var ctx in context) {
+                // with fallback for non-translated batches
+                var text = !string.IsNullOrWhiteSpace(ctx.TranslatedText) ? ctx.TranslatedText : ctx.OriginalText;
+                sb.AppendLine($"- {text}");
+            }
+            sb.AppendLine();
+        }
+        sb.AppendLine("### Lines to Translate:");
         foreach (var item in batch) {
             sb.AppendLine($"{item.Index}. {item.OriginalText}");
         }

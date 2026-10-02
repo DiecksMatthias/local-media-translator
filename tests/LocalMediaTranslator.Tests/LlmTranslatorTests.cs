@@ -195,4 +195,29 @@ public class LlmTranslatorTests {
         Assert.Equal("Hello world", result[0].TranslatedText);
         Assert.Equal("Goodbye friend", result[1].TranslatedText);
     }
+
+    [Fact]
+    public async Task TranslateAsync_MultipleBatches_IncludesPrecedingContextInSubsequentRequests() {
+        var mockLlmContent = "1. Hello\n2. World\n3. Next";
+        var mockLlmJson = $"{{\"choices\":[{{\"message\":{{\"role\":\"assistant\",\"content\":{JsonSerializer.Serialize(mockLlmContent)}}}}}]}}";
+        var handler = new MockHttpMessageHandler(mockLlmJson);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434/") };
+        var translator = new LlmTranslator(client);
+
+        var items = new List<SubtitleItem> {
+            new() { Index = 1, OriginalText = "こんにちは" },
+            new() { Index = 2, OriginalText = "世界" },
+            new() { Index = 3, OriginalText = "次へ" }
+        };
+
+        var options = new TranslationOptions { BatchSize = 2 };
+        await translator.TranslateAsync(items, options);
+
+        Assert.Equal(2, handler.CallCount);
+        Assert.NotNull(handler.LastRequestBody);
+
+        // Batch 2 request should include reference context from Batch 1
+        Assert.Contains("Context from preceding dialogue", handler.LastRequestBody);
+        Assert.Contains("Hello", handler.LastRequestBody);
+    }
 }
