@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using LocalMediaTranslator.Core.Models;
 using LocalMediaTranslator.Infrastructure.Services;
 using LocalMediaTranslator.Tests.Helpers;
@@ -117,7 +119,7 @@ public class HttpWhisperTranscriberTests {
     [Fact]
     public async Task TranscribeAsync_CudaOutOfMemory_ThrowsOutOfMemoryException() {
         var mockError = "RuntimeError: CUDA failed with error out of memory";
-        var handler = new MockHttpMessageHandler(mockError, System.Net.HttpStatusCode.InternalServerError);
+        var handler = new MockHttpMessageHandler(mockError, HttpStatusCode.InternalServerError);
         var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
         var transcriber = new HttpWhisperTranscriber(client);
 
@@ -135,5 +137,158 @@ public class HttpWhisperTranscriberTests {
         finally {
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
+    }
+
+    [Fact]
+    public async Task UnloadAsync_ModelsLoaded_SendsDeleteRequestForEachModel() {
+        var deleteRequests = new List<string>();
+        var handler = new MockHttpMessageHandler(request => {
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath.EndsWith("api/ps") == true) {
+                var json = """{"data": [{"id": "Systran/faster-whisper-large-v3"}, {"id": "openai/whisper-tiny"}]}""";
+                return new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+            }
+
+            if (request.Method == HttpMethod.Delete) {
+                deleteRequests.Add(request.RequestUri?.ToString() ?? string.Empty);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(2, deleteRequests.Count);
+        Assert.Contains("api/ps/Systran%2Ffaster-whisper-large-v3", deleteRequests[0]);
+        Assert.Contains("api/ps/openai%2Fwhisper-tiny", deleteRequests[1]);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_ModelsEnvelopeVariation_UnloadsModels() {
+        var deleteRequests = new List<string>();
+        var handler = new MockHttpMessageHandler(request => {
+            if (request.Method == HttpMethod.Get) {
+                var json = """{"models": [{"id": "whisper-medium"}]}""";
+                return new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+            }
+
+            if (request.Method == HttpMethod.Delete) {
+                deleteRequests.Add(request.RequestUri?.ToString() ?? string.Empty);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Single(deleteRequests);
+        Assert.Contains("api/ps/whisper-medium", deleteRequests[0]);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_RawArrayResponse_UnloadsModels() {
+        var deleteRequests = new List<string>();
+        var handler = new MockHttpMessageHandler(request => {
+            if (request.Method == HttpMethod.Get) {
+                var json = """[{"id": "whisper-small"}]""";
+                return new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+            }
+
+            if (request.Method == HttpMethod.Delete) {
+                deleteRequests.Add(request.RequestUri?.ToString() ?? string.Empty);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Single(deleteRequests);
+        Assert.Contains("api/ps/whisper-small", deleteRequests[0]);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_EndpointNotFound_CompletesGracefullyWithoutDelete() {
+        var handler = new MockHttpMessageHandler("Not Found", HttpStatusCode.NotFound);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_HttpErrorOnGet_CompletesGracefullyWithoutDelete() {
+        var handler = new MockHttpMessageHandler("Internal Server Error", HttpStatusCode.InternalServerError);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_EmptyModelsList_SendsNoDelete() {
+        var handler = new MockHttpMessageHandler("""{"data": []}""");
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_DeleteFails_CompletesGracefullyWithoutThrowing() {
+        var handler = new MockHttpMessageHandler(request => {
+            if (request.Method == HttpMethod.Get) {
+                var json = """{"data": [{"id": "model-1"}]}""";
+                return new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(2, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_CancellationRequested_RethrowsOperationCanceledException() {
+        var handler = new MockHttpMessageHandler("{}");
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => {
+            await transcriber.UnloadAsync(cts.Token);
+        });
     }
 }

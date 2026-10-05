@@ -4,6 +4,7 @@ using System.Text.Json;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LocalMediaTranslator.Infrastructure.Services;
 
@@ -11,9 +12,9 @@ public class HttpWhisperTranscriber : ITranscriber {
     private readonly HttpClient _httpClient;
     private readonly ILogger<HttpWhisperTranscriber> _logger;
 
-    public HttpWhisperTranscriber(HttpClient httpClient, ILogger<HttpWhisperTranscriber> logger) {
+    public HttpWhisperTranscriber(HttpClient httpClient, ILogger<HttpWhisperTranscriber>? logger = null) {
         _httpClient = httpClient;
-        _logger = logger;
+        _logger = logger ?? NullLogger<HttpWhisperTranscriber>.Instance;
     }
 
     public async IAsyncEnumerable<SubtitleItem> TranscribeAsync(string audioWavPath, TranscriptionOptions options, [EnumeratorCancellation] CancellationToken cs = default) {
@@ -107,9 +108,13 @@ public class HttpWhisperTranscriber : ITranscriber {
             }
 
             using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cs), cancellationToken: cs);
-            var models = doc.RootElement.TryGetProperty("data", out var d) ? d
-                : doc.RootElement.TryGetProperty("models", out var m) ? m
-                : doc.RootElement;
+            var root = doc.RootElement;
+            var models = root.ValueKind switch {
+                JsonValueKind.Array => root,
+                JsonValueKind.Object when root.TryGetProperty("data", out var d) => d,
+                JsonValueKind.Object when root.TryGetProperty("models", out var m) => m,
+                _ => root
+            };
 
             // nothing actually loaded yet
             if (models.ValueKind != JsonValueKind.Array)
