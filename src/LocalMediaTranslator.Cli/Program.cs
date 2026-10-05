@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System.Net.Http.Headers;
+using Microsoft.Extensions.Logging;
 
 var configuration = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
@@ -18,6 +19,10 @@ var configuration = new ConfigurationBuilder()
 var services = new ServiceCollection();
 
 // dependency injection
+services.AddLogging(b => b.AddSimpleConsole(o => {
+    o.SingleLine = true;
+    o.TimestampFormat = "HH:mm:ss ";
+}).SetMinimumLevel(LogLevel.Warning));
 services.AddHttpClient();
 services.AddSingleton<IConfiguration>(configuration);
 services.Configure<MediaClientOptions>(configuration.GetSection("MediaServer"));
