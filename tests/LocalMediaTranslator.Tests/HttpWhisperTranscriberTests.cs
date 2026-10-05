@@ -139,96 +139,119 @@ public class HttpWhisperTranscriberTests {
         }
     }
 
-    [Fact]
-    public async Task UnloadAsync_ModelsLoaded_SendsDeleteRequestForEachModel() {
-        var deleteRequests = new List<string>();
-        var handler = new MockHttpMessageHandler(request => {
-            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath.EndsWith("api/ps") == true) {
-                var json = """{"data": [{"id": "Systran/faster-whisper-large-v3"}, {"id": "openai/whisper-tiny"}]}""";
+    // Speaches' documented RunningModelsResponse (GET /api/ps, schema v0.8.3):
+    // {"models": ["<model_id>", ...]} — an array of plain STRINGS, not objects.
+    // This is the shape the real server returns, so it is the primary fixture.
+    private const string SpeachesRunningModelsJson =
+        """{"models":["Systran/faster-whisper-large-v3","openai/whisper-tiny"]}""";
+
+    /// <summary>
+    /// Builds a mock Speaches server: GET api/ps returns <paramref name="psJson"/>,
+    /// every DELETE is recorded and answered with <paramref name="deleteStatus"/>.
+    /// </summary>
+    private static MockHttpMessageHandler CreateSpeachesHandler(
+        string psJson,
+        HttpStatusCode deleteStatus = HttpStatusCode.OK,
+        List<string>? deleteRequests = null) {
+        return new MockHttpMessageHandler(request => {
+            if (request.Method == HttpMethod.Get) {
                 return new HttpResponseMessage(HttpStatusCode.OK) {
-                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                    Content = new StringContent(psJson, Encoding.UTF8, "application/json")
                 };
             }
 
             if (request.Method == HttpMethod.Delete) {
-                deleteRequests.Add(request.RequestUri?.ToString() ?? string.Empty);
-                return new HttpResponseMessage(HttpStatusCode.OK);
+                deleteRequests?.Add(request.RequestUri?.ToString() ?? string.Empty);
+                return new HttpResponseMessage(deleteStatus);
             }
 
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
+    }
 
-        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
-        var transcriber = new HttpWhisperTranscriber(client);
+    private static HttpWhisperTranscriber CreateTranscriber(HttpMessageHandler handler)
+        => new(new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") });
+
+    [Fact]
+    public async Task UnloadAsync_DocumentedSpeachesShape_UnloadsEachModelById() {
+        var deleteRequests = new List<string>();
+        var handler = CreateSpeachesHandler(SpeachesRunningModelsJson, deleteRequests: deleteRequests);
+        var transcriber = CreateTranscriber(handler);
 
         await transcriber.UnloadAsync();
 
+        // GET + one DELETE per loaded model. Model IDs contain '/', so they must be escaped.
+        Assert.Equal(3, handler.CallCount);
         Assert.Equal(2, deleteRequests.Count);
         Assert.Contains("api/ps/Systran%2Ffaster-whisper-large-v3", deleteRequests[0]);
         Assert.Contains("api/ps/openai%2Fwhisper-tiny", deleteRequests[1]);
     }
 
     [Fact]
-    public async Task UnloadAsync_ModelsEnvelopeVariation_UnloadsModels() {
-        var deleteRequests = new List<string>();
-        var handler = new MockHttpMessageHandler(request => {
-            if (request.Method == HttpMethod.Get) {
-                var json = """{"models": [{"id": "whisper-medium"}]}""";
-                return new HttpResponseMessage(HttpStatusCode.OK) {
-                    Content = new StringContent(json, Encoding.UTF8, "application/json")
-                };
-            }
-
-            if (request.Method == HttpMethod.Delete) {
-                deleteRequests.Add(request.RequestUri?.ToString() ?? string.Empty);
-                return new HttpResponseMessage(HttpStatusCode.OK);
-            }
-
-            return new HttpResponseMessage(HttpStatusCode.NotFound);
-        });
-
-        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
-        var transcriber = new HttpWhisperTranscriber(client);
+    public async Task UnloadAsync_DocumentedSpeachesShape_QueriesApiPsBeforeDeleting() {
+        var handler = CreateSpeachesHandler(SpeachesRunningModelsJson);
+        var transcriber = CreateTranscriber(handler);
 
         await transcriber.UnloadAsync();
 
-        Assert.Single(deleteRequests);
-        Assert.Contains("api/ps/whisper-medium", deleteRequests[0]);
+        Assert.Equal(HttpMethod.Get, handler.Requests[0].Method);
+        Assert.EndsWith("/api/ps", handler.Requests[0].RequestUri?.AbsolutePath);
+        Assert.All(handler.Requests.Skip(1), r => Assert.Equal(HttpMethod.Delete, r.Method));
     }
 
-    [Fact]
-    public async Task UnloadAsync_RawArrayResponse_UnloadsModels() {
+    [Theory]
+    // Documented shape (array of strings) — the one that actually occurs.
+    [InlineData("""{"models":["whisper-medium"]}""", "api/ps/whisper-medium")]
+    // Defensive variants for other/older builds. Element kind drives parsing.
+    [InlineData("""{"models":[{"id":"whisper-medium"}]}""", "api/ps/whisper-medium")]
+    [InlineData("""{"data":[{"id":"whisper-medium"}]}""", "api/ps/whisper-medium")]
+    [InlineData("""[{"id":"whisper-medium"}]""", "api/ps/whisper-medium")]
+    [InlineData("""["whisper-medium"]""", "api/ps/whisper-medium")]
+    public async Task UnloadAsync_ModelListShapeVariations_UnloadsModel(string psJson, string expectedDeleteFragment) {
         var deleteRequests = new List<string>();
-        var handler = new MockHttpMessageHandler(request => {
-            if (request.Method == HttpMethod.Get) {
-                var json = """[{"id": "whisper-small"}]""";
-                return new HttpResponseMessage(HttpStatusCode.OK) {
-                    Content = new StringContent(json, Encoding.UTF8, "application/json")
-                };
-            }
-
-            if (request.Method == HttpMethod.Delete) {
-                deleteRequests.Add(request.RequestUri?.ToString() ?? string.Empty);
-                return new HttpResponseMessage(HttpStatusCode.OK);
-            }
-
-            return new HttpResponseMessage(HttpStatusCode.NotFound);
-        });
-
-        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
-        var transcriber = new HttpWhisperTranscriber(client);
+        var handler = CreateSpeachesHandler(psJson, deleteRequests: deleteRequests);
+        var transcriber = CreateTranscriber(handler);
 
         await transcriber.UnloadAsync();
 
         Assert.Single(deleteRequests);
-        Assert.Contains("api/ps/whisper-small", deleteRequests[0]);
+        Assert.Contains(expectedDeleteFragment, deleteRequests[0]);
+    }
+
+    [Theory]
+    // No model loaded yet — nothing to unload, and no DELETE should be attempted.
+    [InlineData("""{"models":[]}""")]
+    [InlineData("""{"data":[]}""")]
+    // Non-array payloads must bail out instead of throwing or guessing.
+    [InlineData("""{"models":null}""")]
+    [InlineData("""{"unexpected":"shape"}""")]
+    [InlineData("""{}""")]
+    public async Task UnloadAsync_NoModelsLoaded_SendsNoDelete(string psJson) {
+        var handler = CreateSpeachesHandler(psJson);
+        var transcriber = CreateTranscriber(handler);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(1, handler.CallCount);
     }
 
     [Fact]
     public async Task UnloadAsync_EndpointNotFound_CompletesGracefullyWithoutDelete() {
         var handler = new MockHttpMessageHandler("Not Found", HttpStatusCode.NotFound);
-        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
-        var transcriber = new HttpWhisperTranscriber(client);
+        var transcriber = CreateTranscriber(handler);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    public async Task UnloadAsync_HttpErrorOnGet_CompletesGracefullyWithoutDelete(HttpStatusCode statusCode) {
+        var handler = new MockHttpMessageHandler("upstream failure", statusCode);
+        var transcriber = CreateTranscriber(handler);
 
         await transcriber.UnloadAsync();
 
@@ -236,10 +259,9 @@ public class HttpWhisperTranscriberTests {
     }
 
     [Fact]
-    public async Task UnloadAsync_HttpErrorOnGet_CompletesGracefullyWithoutDelete() {
-        var handler = new MockHttpMessageHandler("Internal Server Error", HttpStatusCode.InternalServerError);
-        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
-        var transcriber = new HttpWhisperTranscriber(client);
+    public async Task UnloadAsync_MalformedJson_CompletesGracefullyWithoutThrowing() {
+        var handler = new MockHttpMessageHandler("{not json", HttpStatusCode.OK);
+        var transcriber = CreateTranscriber(handler);
 
         await transcriber.UnloadAsync();
 
@@ -247,42 +269,32 @@ public class HttpWhisperTranscriberTests {
     }
 
     [Fact]
-    public async Task UnloadAsync_EmptyModelsList_SendsNoDelete() {
-        var handler = new MockHttpMessageHandler("""{"data": []}""");
-        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
-        var transcriber = new HttpWhisperTranscriber(client);
-
-        await transcriber.UnloadAsync();
-
-        Assert.Equal(1, handler.CallCount);
-    }
-
-    [Fact]
-    public async Task UnloadAsync_DeleteFails_CompletesGracefullyWithoutThrowing() {
+    public async Task UnloadAsync_DeleteFails_ContinuesWithRemainingModels() {
+        // First DELETE fails; the second model must still be attempted so one
+        // stuck model cannot block the GPU handoff for everything else.
+        var attemptOrder = new List<string>();
         var handler = new MockHttpMessageHandler(request => {
             if (request.Method == HttpMethod.Get) {
-                var json = """{"data": [{"id": "model-1"}]}""";
                 return new HttpResponseMessage(HttpStatusCode.OK) {
-                    Content = new StringContent(json, Encoding.UTF8, "application/json")
+                    Content = new StringContent(SpeachesRunningModelsJson, Encoding.UTF8, "application/json")
                 };
             }
 
-            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+            attemptOrder.Add(request.RequestUri?.ToString() ?? string.Empty);
+            var isFirst = attemptOrder.Count == 1;
+            return new HttpResponseMessage(isFirst ? HttpStatusCode.InternalServerError : HttpStatusCode.OK);
         });
-
-        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
-        var transcriber = new HttpWhisperTranscriber(client);
+        var transcriber = CreateTranscriber(handler);
 
         await transcriber.UnloadAsync();
 
-        Assert.Equal(2, handler.CallCount);
+        Assert.Equal(2, attemptOrder.Count);
     }
 
     [Fact]
     public async Task UnloadAsync_CancellationRequested_RethrowsOperationCanceledException() {
-        var handler = new MockHttpMessageHandler("{}");
-        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
-        var transcriber = new HttpWhisperTranscriber(client);
+        var handler = new MockHttpMessageHandler(SpeachesRunningModelsJson);
+        var transcriber = CreateTranscriber(handler);
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();

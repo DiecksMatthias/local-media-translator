@@ -121,16 +121,18 @@ public class HttpWhisperTranscriber : ITranscriber {
                 return;
 
             foreach (var model in models.EnumerateArray()) {
-                if (model.TryGetProperty("id", out var idProp)) {
-                    var modelId = idProp.GetString();
-                    if (!string.IsNullOrWhiteSpace(modelId)) {
-                        _logger?.LogDebug("Unloading Whisper model: {modelID}", modelId);
-                        using var delResponse = await _httpClient.DeleteAsync($"api/ps/{Uri.EscapeDataString(modelId)}", cs);
+                var modelId = model.ValueKind switch {
+                    JsonValueKind.String => model.GetString(),
+                    JsonValueKind.Object when model.TryGetProperty("id", out var i) => i.GetString(),
+                    _ => null
+                };
 
-                        if (!delResponse.IsSuccessStatusCode)
-                            _logger?.LogWarning("Failed to unload model {modelID}: HTTP {statusCode}", modelId, delResponse.StatusCode);
-                    }
-                }
+                if (string.IsNullOrWhiteSpace(modelId)) continue;
+                _logger?.LogDebug("Unloading Whisper model: {modelId}", modelId);
+                using var delResponse = await _httpClient.DeleteAsync($"{ressourceEndpoint}/{Uri.EscapeDataString(modelId)}", cs);
+
+                if (!delResponse.IsSuccessStatusCode)
+                    _logger?.LogWarning("Failed to unload model {modelId}: HTTP {statusCode}", modelId, delResponse.StatusCode);
             }
         }
         catch (OperationCanceledException) {
