@@ -4,7 +4,11 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
+using LocalMediaTranslator.Core.Models.Enums;
+using LocalMediaTranslator.Core.Models.Exceptions;
 using LocalMediaTranslator.Infrastructure.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace LocalMediaTranslator.Infrastructure.Services;
@@ -12,10 +16,12 @@ namespace LocalMediaTranslator.Infrastructure.Services;
 public class LlmTranslator : ITranslator {
     private readonly HttpClient _httpclient;
     private readonly IOptions<TranslationOptions> _options;
+    private readonly ILogger<ITranslator> _logger;
 
-    public LlmTranslator(HttpClient httpClient, IOptions<TranslationOptions>? options = null) {
+    public LlmTranslator(HttpClient httpClient, IOptions<TranslationOptions>? options = null, ILogger<ITranslator>? logger = null) {
         _httpclient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _options = options ?? Options.Create(new TranslationOptions());
+        _logger = logger ?? NullLogger<ITranslator>.Instance;
     }
 
     public async Task<IReadOnlyList<SubtitleItem>> TranslateAsync(IReadOnlyList<SubtitleItem> items, TranslationOptions options, IProgress<int>? progress = null, CancellationToken cs = default) {
@@ -27,10 +33,17 @@ public class LlmTranslator : ITranslator {
 
         var contextHistory = new List<SubtitleItem>();
         int processCount = 0;
+        int totalBatches = 0;
+        int failedItems = 0;
+        int failedBatches = 0;
+        int consecutiveFailures = 0;
+        var expectedBatches = (items.Count + options.BatchSize - 1) / options.BatchSize;
         foreach (var batch in items.Chunk(options.BatchSize)) {
             cs.ThrowIfCancellationRequested();
 
             try {
+                totalBatches++;
+
                 // pass last 3 items as context
                 var recentContext = contextHistory.TakeLast(3).ToList();
                 var translations = await TranslateBatchAsync(batch, recentContext, options, cs);
@@ -58,17 +71,68 @@ public class LlmTranslator : ITranslator {
                 }
                 // add freshly translated items to the history so they can lead as context for the next batch
                 contextHistory.AddRange(batch);
+                consecutiveFailures = 0;
             }
-            catch (Exception) when (!cs.IsCancellationRequested) {
-                // Graceful batch fallback: If LLM returns unparseable output or network blips for this batch,
-                // fallback to original text so remaining batches in long media files continue processing.
+            catch (OperationCanceledException) when (cs.IsCancellationRequested) {
+                throw;
+            }
+            catch (HttpRequestException ex) when (IsFatal(ex)) {
+                _logger.LogError("Ollama encountered an Error: {message} - HTTP {statuscode}", ex.Message, ex.StatusCode);
+                throw;
+            }
+            catch (Exception ex) when (ex is JsonException or HttpRequestException or TaskCanceledException) {
                 foreach (var item in batch) {
-                    item.TranslatedText ??= item.OriginalText;
+                    if (item.TranslatedText is null) {
+                        item.TranslatedText = item.OriginalText;
+                        failedItems++;
+                    }
+                }
+                failedBatches++;
+                consecutiveFailures++;
+                _logger.LogWarning(
+                    "Batch {n} of {total} failed ({ex} - {reason}). Falling back to source text.",
+                    failedBatches,
+                    totalBatches,
+                    ex.GetType(),
+                    ex.Message);
+                if (consecutiveFailures >= options.MaxConsecutiveFailures) {
+                    var reason = failedBatches == expectedBatches
+                        ? LlmTranslationFailureExceptionReasons.FullFailure
+                        : LlmTranslationFailureExceptionReasons.PartialFailure;
+                    throw new LlmTranslationException(
+                            failedBatches,
+                            expectedBatches,
+                            failedItems,
+                            reason,
+                            $"Consecutive Failure limit of {options.MaxConsecutiveFailures} reached.",
+                            inner: ex);
                 }
             }
 
             processCount += batch.Length;
             progress?.Report(processCount);
+        }
+        // if (failedBatches == totalBatches && totalBatches > 0) {
+        //     _logger.LogError("Ollama died entirely.");
+        //     throw new LlmTranslationException(
+        //         failedBatches,
+        //         totalBatches,
+        //         failedItems,
+        //         LlmTranslationFailureExceptionReasons.FullFailure,
+        //         "Ollama died entirely.");
+        // }
+        if (failedBatches > 0) {
+            if (options.FailOnPartialFailure)
+                throw new LlmTranslationException(
+                    failedBatches,
+                    totalBatches,
+                    failedItems,
+                    LlmTranslationFailureExceptionReasons.FailOnPartialFailure,
+                    $"Aborted: {failedBatches} Batches failed to translate");
+            _logger.LogWarning(
+                "{failed} of {total} batches fell back to source text - the output is partially untranslated.",
+                failedBatches,
+                totalBatches);
         }
         return items;
     }
@@ -172,6 +236,14 @@ public class LlmTranslator : ITranslator {
         json = Regex.Replace(json, @",\s*([\]\}])", "$1");
 
         return json;
+    }
+
+    private static bool IsFatal(HttpRequestException ex) {
+        return ex.StatusCode == System.Net.HttpStatusCode.BadRequest
+            || ex.StatusCode == System.Net.HttpStatusCode.Unauthorized
+            || ex.StatusCode == System.Net.HttpStatusCode.Forbidden
+            || ex.StatusCode == System.Net.HttpStatusCode.NotFound
+            || ex.StatusCode == System.Net.HttpStatusCode.UnprocessableContent;
     }
 
     public async Task UnloadAsync(CancellationToken cs = default) {
