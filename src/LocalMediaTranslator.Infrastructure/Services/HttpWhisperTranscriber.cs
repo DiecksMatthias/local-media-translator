@@ -3,14 +3,17 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
+using Microsoft.Extensions.Logging;
 
 namespace LocalMediaTranslator.Infrastructure.Services;
 
 public class HttpWhisperTranscriber : ITranscriber {
     private readonly HttpClient _httpClient;
+    private readonly ILogger<HttpWhisperTranscriber> _logger;
 
-    public HttpWhisperTranscriber(HttpClient httpClient) {
+    public HttpWhisperTranscriber(HttpClient httpClient, ILogger<HttpWhisperTranscriber> logger) {
         _httpClient = httpClient;
+        _logger = logger;
     }
 
     public async IAsyncEnumerable<SubtitleItem> TranscribeAsync(string audioWavPath, TranscriptionOptions options, [EnumeratorCancellation] CancellationToken cs = default) {
@@ -90,20 +93,47 @@ public class HttpWhisperTranscriber : ITranscriber {
     // used to properly unload speachers from the vram so that ollama can use the full gpu
     public async Task UnloadAsync(CancellationToken cs = default) {
         try {
-            using var response = await _httpClient.GetAsync("api/ps", cs);
-            if (response.IsSuccessStatusCode) {
-                using var doc = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cs));
-                if (doc.RootElement.TryGetProperty("models", out var models)) {
-                    foreach (var model in models.EnumerateArray()) {
-                        var modelID = model.GetString();
-                        if (!string.IsNullOrWhiteSpace(modelID))
-                            await _httpClient.DeleteAsync($"api/ps/{Uri.EscapeDataString(modelID)}", cs);
+            string ressourceEndpoint = "api/ps";
+            using var response = await _httpClient.GetAsync(ressourceEndpoint, cs);
+
+            // should work with speaches, but this guard is there if there are changes in the endpoint structure
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) {
+                _logger?.LogDebug("Whisper endpoint does not support {ressourceEndpoint}. Skipped Unload", ressourceEndpoint);
+                return;
+            }
+            if (!response.IsSuccessStatusCode) {
+                _logger?.LogWarning("Failed to query loaded Whisper models: HTTP {statusCode}", response.StatusCode);
+                return;
+            }
+
+            using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cs), cancellationToken: cs);
+            var models = doc.RootElement.TryGetProperty("data", out var d) ? d
+                : doc.RootElement.TryGetProperty("models", out var m) ? m
+                : doc.RootElement;
+
+            // nothing actually loaded yet
+            if (models.ValueKind != JsonValueKind.Array)
+                return;
+
+            foreach (var model in models.EnumerateArray()) {
+                if (model.TryGetProperty("id", out var idProp)) {
+                    var modelId = idProp.GetString();
+                    if (!string.IsNullOrWhiteSpace(modelId)) {
+                        _logger?.LogDebug("Unloading Whisper model: {modelID}", modelId);
+                        using var delResponse = await _httpClient.DeleteAsync($"api/ps/{Uri.EscapeDataString(modelId)}", cs);
+
+                        if (!delResponse.IsSuccessStatusCode)
+                            _logger?.LogWarning("Failed to unload model {modelID}: HTTP {statusCode}", modelId, delResponse.StatusCode);
                     }
                 }
             }
         }
-        catch {
-
+        catch (OperationCanceledException) {
+            // throw to console
+            throw;
+        }
+        catch (Exception ex) {
+            _logger?.LogWarning(ex, "Whisper model unload encountered an unexpected error");
         }
     }
 
