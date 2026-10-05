@@ -112,15 +112,7 @@ public class LlmTranslator : ITranslator {
             processCount += batch.Length;
             progress?.Report(processCount);
         }
-        // if (failedBatches == totalBatches && totalBatches > 0) {
-        //     _logger.LogError("Ollama died entirely.");
-        //     throw new LlmTranslationException(
-        //         failedBatches,
-        //         totalBatches,
-        //         failedItems,
-        //         LlmTranslationFailureExceptionReasons.FullFailure,
-        //         "Ollama died entirely.");
-        // }
+
         if (failedBatches > 0) {
             if (options.FailOnPartialFailure)
                 throw new LlmTranslationException(
