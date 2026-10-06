@@ -18,7 +18,7 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
         _mediaOptions = mediaOptions;
     }
 
-    protected override async Task<int> ExecuteAsync(CommandContext context, TranslateFileSettings settings, CancellationToken cancellationToken) {
+    public override async Task<int> ExecuteAsync(CommandContext context, TranslateFileSettings settings, CancellationToken cancellationToken) {
         // guards & validation
         ArgumentNullException.ThrowIfNull(settings);
         var localPath = PathTransformer.TransformPath(settings.InputPath, _mediaOptions.Value.PathMappings);

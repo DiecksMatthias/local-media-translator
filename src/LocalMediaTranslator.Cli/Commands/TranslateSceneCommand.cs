@@ -19,7 +19,7 @@ public class TranslateSceneCommand : AsyncCommand<TranslateSceneSettings> {
         _mediaTranslationPipeline = mediaTranslationPipeline;
         _mediaOptions = options;
     }
-    protected override async Task<int> ExecuteAsync(CommandContext context, TranslateSceneSettings settings, CancellationToken cancellationToken) {
+    public override async Task<int> ExecuteAsync(CommandContext context, TranslateSceneSettings settings, CancellationToken cancellationToken) {
         var serverType = settings.ServerType ?? _mediaOptions.Value.ServerType;
         var client = _serviceProvider.GetKeyedService<IMediaServerClient>(serverType);
 

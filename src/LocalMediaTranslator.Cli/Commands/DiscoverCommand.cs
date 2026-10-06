@@ -17,7 +17,7 @@ public class DiscoverCommand : AsyncCommand<DiscoverSettings> {
         _options = options;
     }
 
-    protected override async Task<int> ExecuteAsync(CommandContext context, DiscoverSettings settings, CancellationToken cancellationToken) {
+    public override async Task<int> ExecuteAsync(CommandContext context, DiscoverSettings settings, CancellationToken cancellationToken) {
         var serverType = settings.MediaServerType ?? _options.Value.ServerType;
         var client = _serviceProvider.GetKeyedService<IMediaServerClient>(serverType);
         if (client is null) {
