@@ -35,8 +35,12 @@ public class HttpWhisperTranscriber : ITranscriber {
         form.Add(fileContent, "file", Path.GetFileName(audioWavPath));
         form.Add(new StringContent(options.ServerModel), "model");
         form.Add(new StringContent("verbose_json"), "response_format");
-        form.Add(new StringContent(options.Language ?? "ja"), "language");
-        form.Add(new StringContent("0.0"), "temperature");
+        form.Add(new StringContent(
+            !string.IsNullOrWhiteSpace(options.Language)
+                ? options.Language
+                : TranscriptionOptions.DefaultLanguage
+        ), "language");
+        form.Add(new StringContent(options.Temperature.ToString()), "temperature");
 
         // whisper is hallucinating additional spoken word when there is no audio 
         // and these parameters should stop it from doing that
