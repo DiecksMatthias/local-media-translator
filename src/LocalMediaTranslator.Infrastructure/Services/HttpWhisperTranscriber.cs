@@ -19,17 +19,21 @@ public class HttpWhisperTranscriber : ITranscriber {
 
     public async IAsyncEnumerable<SubtitleItem> TranscribeAsync(string audioWavPath, TranscriptionOptions options, [EnumeratorCancellation] CancellationToken cs = default) {
         // Guards
+        if (string.IsNullOrWhiteSpace(options.ServerModel))
+            throw new InvalidOperationException(
+                message: "ServerModel is required when using HTTP transcriber." +
+                "Set Transcription:ServerModel or pass a server model");
         if (!File.Exists(audioWavPath))
             throw new FileNotFoundException(message: $"Audio File not found at {audioWavPath}");
-
 
         using var form = new MultipartFormDataContent();
         await using var fileStream = File.OpenRead(audioWavPath);
         using var fileContent = new StreamContent(fileStream);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
 
+
         form.Add(fileContent, "file", Path.GetFileName(audioWavPath));
-        form.Add(new StringContent(options.ServerModel ?? "Systran/faster-whisper-large-v3"), "model");
+        form.Add(new StringContent(options.ServerModel), "model");
         form.Add(new StringContent("verbose_json"), "response_format");
         form.Add(new StringContent(options.Language ?? "ja"), "language");
         form.Add(new StringContent("0.0"), "temperature");

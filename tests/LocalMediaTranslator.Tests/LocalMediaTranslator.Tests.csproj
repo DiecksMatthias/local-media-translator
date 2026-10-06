@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\LocalMediaTranslator.Core\LocalMediaTranslator.Core.csproj" />
     <ProjectReference Include="..\..\src\LocalMediaTranslator.Infrastructure\LocalMediaTranslator.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\LocalMediaTranslator.Cli\LocalMediaTranslator.Cli.csproj" />
   </ItemGroup>
 
 </Project>

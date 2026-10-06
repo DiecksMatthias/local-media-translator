@@ -22,7 +22,7 @@ public class LocalWhisperTranscriberIntegrationTests : IAsyncLifetime {
             await modelStream.CopyToAsync(fileStream);
         }
 
-        await Cli.Wrap("ffmpeg").WithArguments(args =>
+        await CliWrap.Cli.Wrap("ffmpeg").WithArguments(args =>
                                     args.Add("-y")
                                     .Add("-f").Add("lavfi").Add("-i").Add("sine=frequency=1000:duration=2")
                                     .Add("-ar").Add(16000)

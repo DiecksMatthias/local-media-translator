@@ -12,7 +12,7 @@ public class FFmpegAudioExtractorIntegrationTests : IAsyncLifetime {
         Directory.CreateDirectory(_testDir);
         _sampleVideoPath = Path.Combine(_testDir, "sample.mp4");
 
-        await Cli.Wrap("ffmpeg")
+        await CliWrap.Cli.Wrap("ffmpeg")
                  .WithArguments(args => args
                     .Add("-y")
                     .Add("-f").Add("lavfi").Add("-i").Add("testsrc=duration=1:size=320x240:rate=30")

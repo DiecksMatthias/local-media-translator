@@ -13,7 +13,7 @@ public class HttpWhisperTranscriberTests {
         var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
         var transcriber = new HttpWhisperTranscriber(client);
 
-        var options = new TranscriptionOptions();
+        var options = new TranscriptionOptions { ServerModel = "Systran/faster-whisper-large-v3" };
         var fakePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.wav");
 
         await Assert.ThrowsAsync<FileNotFoundException>(async () => {
@@ -127,7 +127,7 @@ public class HttpWhisperTranscriberTests {
         await File.WriteAllBytesAsync(tempFile, new byte[] { 0x01, 0x02 });
 
         try {
-            var options = new TranscriptionOptions();
+            var options = new TranscriptionOptions { ServerModel = "Systran/faster-whisper-large-v3" };
             var ex = await Assert.ThrowsAsync<OutOfMemoryException>(async () => {
                 await foreach (var _ in transcriber.TranscribeAsync(tempFile, options)) { }
             });

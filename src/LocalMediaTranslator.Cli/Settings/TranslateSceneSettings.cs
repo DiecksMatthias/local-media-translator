@@ -30,4 +30,9 @@ public class TranslateSceneSettings : CommandSettings {
     [CommandOption("-m|--local-model <MODEL_PATH>")]
     [Description("Path to the ggml Whisper model file (if using local Whisper)")]
     public string? LocalModelPath { get; init; }
+
+    [CommandOption("--server-model <MODEL_NAME>")]
+    [Description("Name of the ggml Whisper model")]
+    public string? ServerModel { get; init; }
+
 }

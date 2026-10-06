@@ -12,6 +12,10 @@ public class TranslateFileSettings : CommandSettings {
     [Description("Path to the ggml Whisper model file")]
     public string? LocalModelPath { get; init; }
 
+    [CommandOption("--server-model <MODEL_NAME>")]
+    [Description("Name of the ggml Whisper model")]
+    public string? ServerModel { get; init; }
+
     [CommandOption("-d|--dual-language")]
     [Description("Generate dual-language subtitles (sources + target text)")]
     [DefaultValue(false)]

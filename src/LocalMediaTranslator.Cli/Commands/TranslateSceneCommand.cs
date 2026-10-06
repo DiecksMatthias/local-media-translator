@@ -94,6 +94,7 @@ public class TranslateSceneCommand : AsyncCommand<TranslateSceneSettings> {
                         OutputSrtPath = srtPath,
                         MediaFilePath = primaryFile,
                         LocalModelPath = settings.LocalModelPath,
+                        ServerModel = settings.ServerModel,
                         DualLanguage = settings.DualLanguage
                     };
                     resultSrtPath = await _mediaTranslationPipeline.ExecuteAsync(pipelineOptions, progress, cancellationToken);
