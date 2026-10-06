@@ -7,6 +7,32 @@ using LocalMediaTranslator.Tests.Helpers;
 namespace LocalMediaTranslator.Tests;
 
 public class HttpWhisperTranscriberTests {
+    /// <summary>
+    /// The guard exists so a missing model id fails loudly instead of silently
+    /// falling back to some other model. It runs before the file checks, so it
+    /// fires even when the audio path does not exist.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task TranscribeAsync_MissingServerModel_ThrowsInvalidOperation(string? serverModel) {
+        var handler = new MockHttpMessageHandler("{}");
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        var options = new TranscriptionOptions { ServerModel = serverModel };
+        var fakePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.wav");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => {
+            await foreach (var _ in transcriber.TranscribeAsync(fakePath, options)) { }
+        });
+
+        Assert.Contains("ServerModel is required", ex.Message);
+        // No request should have been attempted.
+        Assert.Equal(0, handler.CallCount);
+    }
+
     [Fact]
     public async Task TranscribeAsync_FileNotFound_ThrowsFileNotFoundException() {
         var handler = new MockHttpMessageHandler("{}");

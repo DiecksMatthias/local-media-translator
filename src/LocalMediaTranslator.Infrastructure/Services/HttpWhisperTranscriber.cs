@@ -21,8 +21,8 @@ public class HttpWhisperTranscriber : ITranscriber {
         // Guards
         if (string.IsNullOrWhiteSpace(options.ServerModel))
             throw new InvalidOperationException(
-                message: "ServerModel is required when using HTTP transcriber." +
-                "Set Transcription:ServerModel or pass a server model");
+                message: "ServerModel is required when using the HTTP transcriber. " +
+                "Set Transcription:ServerModel or pass --server-model.");
         if (!File.Exists(audioWavPath))
             throw new FileNotFoundException(message: $"Audio File not found at {audioWavPath}");
 
