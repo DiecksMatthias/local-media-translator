@@ -38,8 +38,8 @@ public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
 
             // transcribe
             var transcribeOptions = new TranscriptionOptions {
-                ModelPath = _transcribeOptions.Value.ModelPath,
-                Model = _transcribeOptions.Value.Model,
+                LocalModelPath = _transcribeOptions.Value.LocalModelPath,
+                ServerModel = _transcribeOptions.Value.ServerModel,
                 Language = _transcribeOptions.Value.Language,
                 Temperature = _transcribeOptions.Value.Temperature
             };

@@ -58,7 +58,7 @@ public class HttpWhisperTranscriberTests {
         await File.WriteAllBytesAsync(tempFile, new byte[] { 0x01, 0x02 });
 
         try {
-            var options = new TranscriptionOptions { Model = "Systran/faster-whisper-large-v3", Language = "ja" };
+            var options = new TranscriptionOptions { ServerModel = "Systran/faster-whisper-large-v3", Language = "ja" };
             var results = new List<SubtitleItem>();
 
             await foreach (var item in transcriber.TranscribeAsync(tempFile, options)) {
@@ -94,7 +94,7 @@ public class HttpWhisperTranscriberTests {
         await File.WriteAllBytesAsync(tempFile, new byte[] { 0x01, 0x02 });
 
         try {
-            var options = new TranscriptionOptions { Model = "Systran/faster-whisper-large-v3", Language = "ja" };
+            var options = new TranscriptionOptions { ServerModel = "Systran/faster-whisper-large-v3", Language = "ja" };
             await foreach (var _ in transcriber.TranscribeAsync(tempFile, options)) { }
 
             Assert.NotNull(handler.LastRequestBody);

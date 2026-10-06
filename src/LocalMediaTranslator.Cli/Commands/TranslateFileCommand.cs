@@ -26,8 +26,8 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
             AnsiConsole.MarkupLine($"[red]Error:[/] Input file not found [bold] {localPath}[/]");
             return 1;
         }
-        if (settings.ModelPath is not null && !File.Exists(settings.ModelPath)) {
-            AnsiConsole.MarkupLine($"[red]Error[/]: Whisper model file not found: [bold] {settings.ModelPath}[/]");
+        if (settings.LocalModelPath is not null && !File.Exists(settings.LocalModelPath)) {
+            AnsiConsole.MarkupLine($"[red]Error[/]: Whisper model file not found: [bold] {settings.LocalModelPath}[/]");
             return 1;
         }
 
@@ -81,7 +81,7 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
                     var pipelineOptions = new PipelineExecutionOptions {
                         OutputSrtPath = srtPath,
                         MediaFilePath = localPath,
-                        ModelPath = settings.ModelPath,
+                        LocalModelPath = settings.LocalModelPath,
                         DualLanguage = settings.DualLanguage
                     };
                     resultSrtPath = await _pipeline.ExecuteAsync(pipelineOptions, progress, cancellationToken);

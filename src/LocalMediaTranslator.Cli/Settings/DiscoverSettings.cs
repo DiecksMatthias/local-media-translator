@@ -32,9 +32,9 @@ public class DiscoverSettings : CommandSettings {
 
 
     // Pipeline options
-    [CommandOption("-m|--model-path <PATH>")]
+    [CommandOption("-m|--local-model <PATH>")]
     [Description("Path to the local Whisper GGML/GGUF model file (e.g. models/ggml-base.bin).")]
-    public string? ModelPath { get; init; }
+    public string? LocalModelPath { get; init; }
 
     [CommandOption("-d|--dual-language")]
     [Description("Generate bilingual subtitles showing original transcribed text above translated English.")]

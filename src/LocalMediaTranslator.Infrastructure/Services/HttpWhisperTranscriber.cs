@@ -29,7 +29,7 @@ public class HttpWhisperTranscriber : ITranscriber {
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
 
         form.Add(fileContent, "file", Path.GetFileName(audioWavPath));
-        form.Add(new StringContent(options.Model ?? "Systran/faster-whisper-large-v3"), "model");
+        form.Add(new StringContent(options.ServerModel ?? "Systran/faster-whisper-large-v3"), "model");
         form.Add(new StringContent("verbose_json"), "response_format");
         form.Add(new StringContent(options.Language ?? "ja"), "language");
         form.Add(new StringContent("0.0"), "temperature");

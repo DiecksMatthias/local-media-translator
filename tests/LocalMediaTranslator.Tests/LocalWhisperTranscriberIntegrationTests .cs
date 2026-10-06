@@ -34,7 +34,7 @@ public class LocalWhisperTranscriberIntegrationTests : IAsyncLifetime {
 
     [Fact]
     public async Task TranscribeAsync_ValidAudioModel_RunsInferenceSuccessfully() {
-        var options = new TranscriptionOptions { ModelPath = _modelPath, Language = "auto" };
+        var options = new TranscriptionOptions { LocalModelPath = _modelPath, Language = "auto" };
 
         var results = new List<SubtitleItem>();
         await foreach (var item in _transcriber.TranscribeAsync(_sampleWavePath, options)) {

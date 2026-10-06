@@ -8,7 +8,7 @@ public class LocalWhisperTranscriberTests {
 
     [Fact]
     public async Task AudioTranscribe_NonExistingAudioFile_ThrowsFileNotFoundException() {
-        var options = new TranscriptionOptions { ModelPath = "models/tiny.bin" };
+        var options = new TranscriptionOptions { LocalModelPath = "models/tiny.bin" };
         await Assert.ThrowsAsync<FileNotFoundException>(async () => {
             var stream = _transcriber.TranscribeAsync("not_existing_file.wav", options);
             await foreach (var _ in stream) {
@@ -20,7 +20,7 @@ public class LocalWhisperTranscriberTests {
     public async Task AudioTranscribe_NonExistingModelFile_ThrowsFileNotFoundException() {
         var tempAudioFile = Path.GetTempFileName();
         try {
-            var options = new TranscriptionOptions { ModelPath = "non_existing_model.bin" };
+            var options = new TranscriptionOptions { LocalModelPath = "non_existing_model.bin" };
             await Assert.ThrowsAsync<FileNotFoundException>(async () => {
                 var stream = _transcriber.TranscribeAsync(tempAudioFile, options);
                 await foreach (var _ in stream) {
