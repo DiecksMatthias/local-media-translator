@@ -3,7 +3,8 @@ using LocalMediaTranslator.Core.Models.Common;
 namespace LocalMediaTranslator.Core.Models;
 
 public class TranscriptionOptions : RemoteServiceOptions {
-    public string Language { get; set; } = "ja";
+    public const string DefaultLanguage = "ja";
+    public string Language { get; set; } = DefaultLanguage;
 
     // used for remote transcriber to identify model by id
     public string? ServerModel { get; init; }
