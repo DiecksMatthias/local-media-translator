@@ -42,14 +42,13 @@ public class DiscoverCommand : AsyncCommand<DiscoverSettings> {
             .Title("[bold blue]Discovered Media Scenes[/]");
         sceneTable.AddColumn(new TableColumn("[cyan]ID[/]").Centered());
         sceneTable.AddColumn(new TableColumn("[green]Title[/]"));
-        sceneTable.AddColumn(new TableColumn("[yellow]Files[/]"));
+        sceneTable.AddColumn(new TableColumn("[yellow]Path[/]"));
         sceneTable.AddColumn(new TableColumn("[magenta]Tags[/]"));
         foreach (var scene in scenes) {
             var id = scene.Id;
             var title = Markup.Escape(scene.Title);
-            var fileCount = scene.Files.Count.ToString();
             var tags = scene.Tags.Count > 0 ? Markup.Escape(string.Join(", ", scene.Tags)) : "[grey]None[/]";
-            sceneTable.AddRow(id, title, fileCount, tags);
+            sceneTable.AddRow(id, title, Markup.Escape(scene.Files[0].AbsolutePath), tags);
         }
         AnsiConsole.Write(sceneTable);
         return 0;

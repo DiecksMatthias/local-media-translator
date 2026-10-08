@@ -5,14 +5,6 @@ using Spectre.Console.Cli;
 namespace LocalMediaTranslator.Cli.Settings;
 
 public class DiscoverSettings : CommandSettings {
-    // Execution mode 
-    [CommandOption("-x|--execute")]
-    [Description("Execute the translation pipeline on discovered scenes. Defaults to dry-run preview if omitted.")]
-    // default value?
-    public bool Execute { get; init; }
-    ////////////////////////////////////////////////////////
-
-
     // Server & Discovery filters 
     [CommandOption("-q|--search <QUERY>")]
     public string? SearchTerm { get; init; }
@@ -28,22 +20,6 @@ public class DiscoverSettings : CommandSettings {
     [CommandOption("-l|--limit <COUNT>")]
     [Description("Maximum number of scenes to fetch and process in a single run.")]
     public int? Limit { get; init; }
-    ////////////////////////////////////////////////////////
-
-
-    // Pipeline options
-    [CommandOption("-m|--local-model <PATH>")]
-    [Description("Path to the local Whisper GGML/GGUF model file (e.g. models/ggml-base.bin).")]
-    public string? LocalModelPath { get; init; }
-
-    [CommandOption("-d|--dual-language")]
-    [Description("Generate bilingual subtitles showing original transcribed text above translated English.")]
-    public bool DualLanguage { get; init; }
-
-    [CommandOption("--rescan|--no-rescan")]
-    [Description("Trigger a server metadata rescan for modified files after subtitle generation. Enabled by default.")]
-    [DefaultValue(true)]
-    public bool Rescan { get; init; } = true;
     ////////////////////////////////////////////////////////
 
 
