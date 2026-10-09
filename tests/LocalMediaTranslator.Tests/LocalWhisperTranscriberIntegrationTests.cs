@@ -5,6 +5,7 @@ using Whisper.net.Ggml;
 
 namespace LocalMediaTranslator.Tests;
 
+[Trait("Category", "Integration")]
 public class LocalWhisperTranscriberIntegrationTests : IAsyncLifetime {
     private readonly LocalWhisperTranscriber _transcriber = new();
     private readonly string _testDir = Path.Combine(Path.GetTempPath(), "WhisperTests_" + Guid.NewGuid());
