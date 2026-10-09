@@ -27,7 +27,12 @@ public class TranslateSceneSettings : CommandSettings {
     [Description("Custom output .srt path (defaults to same name/directory as video)")]
     public string? OutputPath { get; init; }
 
-    [CommandOption("-m|--model <MODEL_PATH>")]
+    [CommandOption("-m|--local-model <MODEL_PATH>")]
     [Description("Path to the ggml Whisper model file (if using local Whisper)")]
-    public string? ModelPath { get; init; }
+    public string? LocalModelPath { get; init; }
+
+    [CommandOption("--server-model <MODEL_NAME>")]
+    [Description("Name of the ggml Whisper model")]
+    public string? ServerModel { get; init; }
+
 }

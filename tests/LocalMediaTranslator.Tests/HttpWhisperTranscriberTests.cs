@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using LocalMediaTranslator.Core.Models;
 using LocalMediaTranslator.Infrastructure.Services;
 using LocalMediaTranslator.Tests.Helpers;
@@ -5,13 +7,39 @@ using LocalMediaTranslator.Tests.Helpers;
 namespace LocalMediaTranslator.Tests;
 
 public class HttpWhisperTranscriberTests {
+    /// <summary>
+    /// The guard exists so a missing model id fails loudly instead of silently
+    /// falling back to some other model. It runs before the file checks, so it
+    /// fires even when the audio path does not exist.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task TranscribeAsync_MissingServerModel_ThrowsInvalidOperation(string? serverModel) {
+        var handler = new MockHttpMessageHandler("{}");
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
+        var transcriber = new HttpWhisperTranscriber(client);
+
+        var options = new TranscriptionOptions { ServerModel = serverModel };
+        var fakePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.wav");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => {
+            await foreach (var _ in transcriber.TranscribeAsync(fakePath, options)) { }
+        });
+
+        Assert.Contains("ServerModel is required", ex.Message);
+        // No request should have been attempted.
+        Assert.Equal(0, handler.CallCount);
+    }
+
     [Fact]
     public async Task TranscribeAsync_FileNotFound_ThrowsFileNotFoundException() {
         var handler = new MockHttpMessageHandler("{}");
         var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
         var transcriber = new HttpWhisperTranscriber(client);
 
-        var options = new TranscriptionOptions();
+        var options = new TranscriptionOptions { ServerModel = "Systran/faster-whisper-large-v3" };
         var fakePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.wav");
 
         await Assert.ThrowsAsync<FileNotFoundException>(async () => {
@@ -56,7 +84,7 @@ public class HttpWhisperTranscriberTests {
         await File.WriteAllBytesAsync(tempFile, new byte[] { 0x01, 0x02 });
 
         try {
-            var options = new TranscriptionOptions { Model = "Systran/faster-whisper-large-v3", Language = "ja" };
+            var options = new TranscriptionOptions { ServerModel = "Systran/faster-whisper-large-v3", Language = "ja" };
             var results = new List<SubtitleItem>();
 
             await foreach (var item in transcriber.TranscribeAsync(tempFile, options)) {
@@ -92,7 +120,7 @@ public class HttpWhisperTranscriberTests {
         await File.WriteAllBytesAsync(tempFile, new byte[] { 0x01, 0x02 });
 
         try {
-            var options = new TranscriptionOptions { Model = "Systran/faster-whisper-large-v3", Language = "ja" };
+            var options = new TranscriptionOptions { ServerModel = "Systran/faster-whisper-large-v3", Language = "ja" };
             await foreach (var _ in transcriber.TranscribeAsync(tempFile, options)) { }
 
             Assert.NotNull(handler.LastRequestBody);
@@ -117,7 +145,7 @@ public class HttpWhisperTranscriberTests {
     [Fact]
     public async Task TranscribeAsync_CudaOutOfMemory_ThrowsOutOfMemoryException() {
         var mockError = "RuntimeError: CUDA failed with error out of memory";
-        var handler = new MockHttpMessageHandler(mockError, System.Net.HttpStatusCode.InternalServerError);
+        var handler = new MockHttpMessageHandler(mockError, HttpStatusCode.InternalServerError);
         var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") };
         var transcriber = new HttpWhisperTranscriber(client);
 
@@ -125,7 +153,7 @@ public class HttpWhisperTranscriberTests {
         await File.WriteAllBytesAsync(tempFile, new byte[] { 0x01, 0x02 });
 
         try {
-            var options = new TranscriptionOptions();
+            var options = new TranscriptionOptions { ServerModel = "Systran/faster-whisper-large-v3" };
             var ex = await Assert.ThrowsAsync<OutOfMemoryException>(async () => {
                 await foreach (var _ in transcriber.TranscribeAsync(tempFile, options)) { }
             });
@@ -135,5 +163,170 @@ public class HttpWhisperTranscriberTests {
         finally {
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
+    }
+
+    // Speaches' documented RunningModelsResponse (GET /api/ps, schema v0.8.3):
+    // {"models": ["<model_id>", ...]} — an array of plain STRINGS, not objects.
+    // This is the shape the real server returns, so it is the primary fixture.
+    private const string SpeachesRunningModelsJson =
+        """{"models":["Systran/faster-whisper-large-v3","openai/whisper-tiny"]}""";
+
+    /// <summary>
+    /// Builds a mock Speaches server: GET api/ps returns <paramref name="psJson"/>,
+    /// every DELETE is recorded and answered with <paramref name="deleteStatus"/>.
+    /// </summary>
+    private static MockHttpMessageHandler CreateSpeachesHandler(
+        string psJson,
+        HttpStatusCode deleteStatus = HttpStatusCode.OK,
+        List<string>? deleteRequests = null) {
+        return new MockHttpMessageHandler(request => {
+            if (request.Method == HttpMethod.Get) {
+                return new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent(psJson, Encoding.UTF8, "application/json")
+                };
+            }
+
+            if (request.Method == HttpMethod.Delete) {
+                deleteRequests?.Add(request.RequestUri?.ToString() ?? string.Empty);
+                return new HttpResponseMessage(deleteStatus);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+    }
+
+    private static HttpWhisperTranscriber CreateTranscriber(HttpMessageHandler handler)
+        => new(new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8000/") });
+
+    [Fact]
+    public async Task UnloadAsync_DocumentedSpeachesShape_UnloadsEachModelById() {
+        var deleteRequests = new List<string>();
+        var handler = CreateSpeachesHandler(SpeachesRunningModelsJson, deleteRequests: deleteRequests);
+        var transcriber = CreateTranscriber(handler);
+
+        await transcriber.UnloadAsync();
+
+        // GET + one DELETE per loaded model. Model IDs contain '/', so they must be escaped.
+        Assert.Equal(3, handler.CallCount);
+        Assert.Equal(2, deleteRequests.Count);
+        Assert.Contains("api/ps/Systran%2Ffaster-whisper-large-v3", deleteRequests[0]);
+        Assert.Contains("api/ps/openai%2Fwhisper-tiny", deleteRequests[1]);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_DocumentedSpeachesShape_QueriesApiPsBeforeDeleting() {
+        var handler = CreateSpeachesHandler(SpeachesRunningModelsJson);
+        var transcriber = CreateTranscriber(handler);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(HttpMethod.Get, handler.Requests[0].Method);
+        Assert.EndsWith("/api/ps", handler.Requests[0].RequestUri?.AbsolutePath);
+        Assert.All(handler.Requests.Skip(1), r => Assert.Equal(HttpMethod.Delete, r.Method));
+    }
+
+    [Theory]
+    // Documented shape (array of strings) — the one that actually occurs.
+    [InlineData("""{"models":["whisper-medium"]}""", "api/ps/whisper-medium")]
+    // Defensive variants for other/older builds. Element kind drives parsing.
+    [InlineData("""{"models":[{"id":"whisper-medium"}]}""", "api/ps/whisper-medium")]
+    [InlineData("""{"data":[{"id":"whisper-medium"}]}""", "api/ps/whisper-medium")]
+    [InlineData("""[{"id":"whisper-medium"}]""", "api/ps/whisper-medium")]
+    [InlineData("""["whisper-medium"]""", "api/ps/whisper-medium")]
+    public async Task UnloadAsync_ModelListShapeVariations_UnloadsModel(string psJson, string expectedDeleteFragment) {
+        var deleteRequests = new List<string>();
+        var handler = CreateSpeachesHandler(psJson, deleteRequests: deleteRequests);
+        var transcriber = CreateTranscriber(handler);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Single(deleteRequests);
+        Assert.Contains(expectedDeleteFragment, deleteRequests[0]);
+    }
+
+    [Theory]
+    // No model loaded yet — nothing to unload, and no DELETE should be attempted.
+    [InlineData("""{"models":[]}""")]
+    [InlineData("""{"data":[]}""")]
+    // Non-array payloads must bail out instead of throwing or guessing.
+    [InlineData("""{"models":null}""")]
+    [InlineData("""{"unexpected":"shape"}""")]
+    [InlineData("""{}""")]
+    public async Task UnloadAsync_NoModelsLoaded_SendsNoDelete(string psJson) {
+        var handler = CreateSpeachesHandler(psJson);
+        var transcriber = CreateTranscriber(handler);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_EndpointNotFound_CompletesGracefullyWithoutDelete() {
+        var handler = new MockHttpMessageHandler("Not Found", HttpStatusCode.NotFound);
+        var transcriber = CreateTranscriber(handler);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.BadGateway)]
+    public async Task UnloadAsync_HttpErrorOnGet_CompletesGracefullyWithoutDelete(HttpStatusCode statusCode) {
+        var handler = new MockHttpMessageHandler("upstream failure", statusCode);
+        var transcriber = CreateTranscriber(handler);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_MalformedJson_CompletesGracefullyWithoutThrowing() {
+        var handler = new MockHttpMessageHandler("{not json", HttpStatusCode.OK);
+        var transcriber = CreateTranscriber(handler);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(1, handler.CallCount);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_DeleteFails_ContinuesWithRemainingModels() {
+        // First DELETE fails; the second model must still be attempted so one
+        // stuck model cannot block the GPU handoff for everything else.
+        var attemptOrder = new List<string>();
+        var handler = new MockHttpMessageHandler(request => {
+            if (request.Method == HttpMethod.Get) {
+                return new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent(SpeachesRunningModelsJson, Encoding.UTF8, "application/json")
+                };
+            }
+
+            attemptOrder.Add(request.RequestUri?.ToString() ?? string.Empty);
+            var isFirst = attemptOrder.Count == 1;
+            return new HttpResponseMessage(isFirst ? HttpStatusCode.InternalServerError : HttpStatusCode.OK);
+        });
+        var transcriber = CreateTranscriber(handler);
+
+        await transcriber.UnloadAsync();
+
+        Assert.Equal(2, attemptOrder.Count);
+    }
+
+    [Fact]
+    public async Task UnloadAsync_CancellationRequested_RethrowsOperationCanceledException() {
+        var handler = new MockHttpMessageHandler(SpeachesRunningModelsJson);
+        var transcriber = CreateTranscriber(handler);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => {
+            await transcriber.UnloadAsync(cts.Token);
+        });
     }
 }

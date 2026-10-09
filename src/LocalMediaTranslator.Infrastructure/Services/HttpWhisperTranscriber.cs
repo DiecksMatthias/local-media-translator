@@ -3,32 +3,44 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using LocalMediaTranslator.Core.Interfaces;
 using LocalMediaTranslator.Core.Models;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LocalMediaTranslator.Infrastructure.Services;
 
 public class HttpWhisperTranscriber : ITranscriber {
     private readonly HttpClient _httpClient;
+    private readonly ILogger<HttpWhisperTranscriber> _logger;
 
-    public HttpWhisperTranscriber(HttpClient httpClient) {
+    public HttpWhisperTranscriber(HttpClient httpClient, ILogger<HttpWhisperTranscriber>? logger = null) {
         _httpClient = httpClient;
+        _logger = logger ?? NullLogger<HttpWhisperTranscriber>.Instance;
     }
 
     public async IAsyncEnumerable<SubtitleItem> TranscribeAsync(string audioWavPath, TranscriptionOptions options, [EnumeratorCancellation] CancellationToken cs = default) {
         // Guards
+        if (string.IsNullOrWhiteSpace(options.ServerModel))
+            throw new InvalidOperationException(
+                message: "ServerModel is required when using the HTTP transcriber. " +
+                "Set Transcription:ServerModel or pass --server-model.");
         if (!File.Exists(audioWavPath))
             throw new FileNotFoundException(message: $"Audio File not found at {audioWavPath}");
-
 
         using var form = new MultipartFormDataContent();
         await using var fileStream = File.OpenRead(audioWavPath);
         using var fileContent = new StreamContent(fileStream);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
 
+
         form.Add(fileContent, "file", Path.GetFileName(audioWavPath));
-        form.Add(new StringContent(options.Model ?? "Systran/faster-whisper-large-v3"), "model");
+        form.Add(new StringContent(options.ServerModel), "model");
         form.Add(new StringContent("verbose_json"), "response_format");
-        form.Add(new StringContent(options.Language ?? "ja"), "language");
-        form.Add(new StringContent("0.0"), "temperature");
+        form.Add(new StringContent(
+            !string.IsNullOrWhiteSpace(options.Language)
+                ? options.Language
+                : TranscriptionOptions.DefaultLanguage
+        ), "language");
+        form.Add(new StringContent(options.Temperature.ToString()), "temperature");
 
         // whisper is hallucinating additional spoken word when there is no audio 
         // and these parameters should stop it from doing that
@@ -90,20 +102,53 @@ public class HttpWhisperTranscriber : ITranscriber {
     // used to properly unload speachers from the vram so that ollama can use the full gpu
     public async Task UnloadAsync(CancellationToken cs = default) {
         try {
-            using var response = await _httpClient.GetAsync("api/ps", cs);
-            if (response.IsSuccessStatusCode) {
-                using var doc = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cs));
-                if (doc.RootElement.TryGetProperty("models", out var models)) {
-                    foreach (var model in models.EnumerateArray()) {
-                        var modelID = model.GetString();
-                        if (!string.IsNullOrWhiteSpace(modelID))
-                            await _httpClient.DeleteAsync($"api/ps/{Uri.EscapeDataString(modelID)}", cs);
-                    }
-                }
+            string ressourceEndpoint = "api/ps";
+            using var response = await _httpClient.GetAsync(ressourceEndpoint, cs);
+
+            // should work with speaches, but this guard is there if there are changes in the endpoint structure
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) {
+                _logger?.LogDebug("Whisper endpoint does not support {ressourceEndpoint}. Skipped Unload", ressourceEndpoint);
+                return;
+            }
+            if (!response.IsSuccessStatusCode) {
+                _logger?.LogWarning("Failed to query loaded Whisper models: HTTP {statusCode}", response.StatusCode);
+                return;
+            }
+
+            using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cs), cancellationToken: cs);
+            var root = doc.RootElement;
+            var models = root.ValueKind switch {
+                JsonValueKind.Array => root,
+                JsonValueKind.Object when root.TryGetProperty("data", out var d) => d,
+                JsonValueKind.Object when root.TryGetProperty("models", out var m) => m,
+                _ => root
+            };
+
+            // nothing actually loaded yet
+            if (models.ValueKind != JsonValueKind.Array)
+                return;
+
+            foreach (var model in models.EnumerateArray()) {
+                var modelId = model.ValueKind switch {
+                    JsonValueKind.String => model.GetString(),
+                    JsonValueKind.Object when model.TryGetProperty("id", out var i) => i.GetString(),
+                    _ => null
+                };
+
+                if (string.IsNullOrWhiteSpace(modelId)) continue;
+                _logger?.LogDebug("Unloading Whisper model: {modelId}", modelId);
+                using var delResponse = await _httpClient.DeleteAsync($"{ressourceEndpoint}/{Uri.EscapeDataString(modelId)}", cs);
+
+                if (!delResponse.IsSuccessStatusCode)
+                    _logger?.LogWarning("Failed to unload model {modelId}: HTTP {statusCode}", modelId, delResponse.StatusCode);
             }
         }
-        catch {
-
+        catch (OperationCanceledException) {
+            // throw to console
+            throw;
+        }
+        catch (Exception ex) {
+            _logger?.LogWarning(ex, "Whisper model unload encountered an unexpected error");
         }
     }
 

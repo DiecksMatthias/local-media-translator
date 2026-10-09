@@ -8,9 +8,13 @@ public class TranslateFileSettings : CommandSettings {
     [Description("Path to the video or audio file to transcribe/translate")]
     public string InputPath { get; init; } = string.Empty;
 
-    [CommandOption("-m|--model <MODEL_PATH>")]
+    [CommandOption("-m|--local-model <MODEL_PATH>")]
     [Description("Path to the ggml Whisper model file")]
-    public string? ModelPath { get; init; }
+    public string? LocalModelPath { get; init; }
+
+    [CommandOption("--server-model <MODEL_NAME>")]
+    [Description("Name of the ggml Whisper model")]
+    public string? ServerModel { get; init; }
 
     [CommandOption("-d|--dual-language")]
     [Description("Generate dual-language subtitles (sources + target text)")]

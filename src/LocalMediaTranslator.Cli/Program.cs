@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System.Net.Http.Headers;
+using Microsoft.Extensions.Logging;
 
 var configuration = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
@@ -18,6 +19,10 @@ var configuration = new ConfigurationBuilder()
 var services = new ServiceCollection();
 
 // dependency injection
+services.AddLogging(b => b.AddSimpleConsole(o => {
+    o.SingleLine = true;
+    o.TimestampFormat = "HH:mm:ss ";
+}).SetMinimumLevel(LogLevel.Warning));
 services.AddHttpClient();
 services.AddSingleton<IConfiguration>(configuration);
 services.Configure<MediaClientOptions>(configuration.GetSection("MediaServer"));
@@ -53,7 +58,7 @@ app.Configure(config => {
         .WithDescription("Translates a single video file on disk")
         .WithExample(["translate", "video.mp4", "--dual-language"]);
     config.AddCommand<DiscoverCommand>("discover")
-        .WithDescription("Queries media servers for scene matching criteria")
+        .WithDescription("Queries media servers for scene matching criteria. Does not modify files")
         .WithExample(["discover", "--tag", "NeedSubtitles"]);
     config.AddCommand<TranslateSceneCommand>("translate-scene")
         .WithDescription("Translates a scene by ID from the media server and optionally triggers a rescan")

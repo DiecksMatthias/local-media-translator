@@ -10,10 +10,10 @@ public class LocalWhisperTranscriber : ITranscriber {
         // Guards
         if (!File.Exists(audioWavPath))
             throw new FileNotFoundException(message: $"Audio File not found at {audioWavPath}");
-        if (!File.Exists(options.ModelPath))
-            throw new FileNotFoundException(message: $"Model File not found at {options.ModelPath}");
+        if (!File.Exists(options.LocalModelPath))
+            throw new FileNotFoundException(message: $"Model File not found at {options.LocalModelPath}");
 
-        using var factory = WhisperFactory.FromPath(options.ModelPath);
+        using var factory = WhisperFactory.FromPath(options.LocalModelPath);
         using var process = factory.CreateBuilder().WithLanguage(options.Language).WithTemperature(options.Temperature).Build();
         await using var audioStream = File.OpenRead(audioWavPath);
 

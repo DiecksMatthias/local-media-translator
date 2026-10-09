@@ -5,6 +5,7 @@ using Whisper.net.Ggml;
 
 namespace LocalMediaTranslator.Tests;
 
+[Trait("Category", "Integration")]
 public class LocalWhisperTranscriberIntegrationTests : IAsyncLifetime {
     private readonly LocalWhisperTranscriber _transcriber = new();
     private readonly string _testDir = Path.Combine(Path.GetTempPath(), "WhisperTests_" + Guid.NewGuid());
@@ -22,7 +23,7 @@ public class LocalWhisperTranscriberIntegrationTests : IAsyncLifetime {
             await modelStream.CopyToAsync(fileStream);
         }
 
-        await Cli.Wrap("ffmpeg").WithArguments(args =>
+        await CliWrap.Cli.Wrap("ffmpeg").WithArguments(args =>
                                     args.Add("-y")
                                     .Add("-f").Add("lavfi").Add("-i").Add("sine=frequency=1000:duration=2")
                                     .Add("-ar").Add(16000)
@@ -34,7 +35,7 @@ public class LocalWhisperTranscriberIntegrationTests : IAsyncLifetime {
 
     [Fact]
     public async Task TranscribeAsync_ValidAudioModel_RunsInferenceSuccessfully() {
-        var options = new TranscriptionOptions { ModelPath = _modelPath, Language = "auto" };
+        var options = new TranscriptionOptions { LocalModelPath = _modelPath, Language = "auto" };
 
         var results = new List<SubtitleItem>();
         await foreach (var item in _transcriber.TranscribeAsync(_sampleWavePath, options)) {

@@ -19,7 +19,7 @@ public class TranslateSceneCommand : AsyncCommand<TranslateSceneSettings> {
         _mediaTranslationPipeline = mediaTranslationPipeline;
         _mediaOptions = options;
     }
-    protected override async Task<int> ExecuteAsync(CommandContext context, TranslateSceneSettings settings, CancellationToken cancellationToken) {
+    public override async Task<int> ExecuteAsync(CommandContext context, TranslateSceneSettings settings, CancellationToken cancellationToken) {
         var serverType = settings.ServerType ?? _mediaOptions.Value.ServerType;
         var client = _serviceProvider.GetKeyedService<IMediaServerClient>(serverType);
 
@@ -93,7 +93,8 @@ public class TranslateSceneCommand : AsyncCommand<TranslateSceneSettings> {
                     var pipelineOptions = new PipelineExecutionOptions {
                         OutputSrtPath = srtPath,
                         MediaFilePath = primaryFile,
-                        ModelPath = settings.ModelPath,
+                        LocalModelPath = settings.LocalModelPath,
+                        ServerModel = settings.ServerModel,
                         DualLanguage = settings.DualLanguage
                     };
                     resultSrtPath = await _mediaTranslationPipeline.ExecuteAsync(pipelineOptions, progress, cancellationToken);
