@@ -26,8 +26,9 @@ services.AddLogging(b => b.AddSimpleConsole(o => {
 services.AddHttpClient();
 services.AddSingleton<IConfiguration>(configuration);
 services.Configure<MediaClientOptions>(configuration.GetSection("MediaServer"));
+
+// translator
 services.Configure<TranslationOptions>(configuration.GetSection("Translation"));
-services.Configure<TranscriptionOptions>(configuration.GetSection("Transcription"));
 services.AddHttpClient<ITranslator, LlmTranslator>((sp, client) => {
     var options = sp.GetRequiredService<IOptions<TranslationOptions>>().Value;
     if (options.Endpoint is not null)
@@ -36,18 +37,37 @@ services.AddHttpClient<ITranslator, LlmTranslator>((sp, client) => {
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
     client.Timeout = options.Timeout;
 });
-services.AddHttpClient<ITranscriber, HttpWhisperTranscriber>((sp, client) => {
-    var options = sp.GetRequiredService<IOptions<TranscriptionOptions>>().Value;
-    if (options.Endpoint is not null)
-        client.BaseAddress = options.Endpoint;
-    client.Timeout = options.Timeout;
-});
 
-services.AddSingleton<IAudioExtractor, FFmpegAudioExtractor>();
+// media client
 services.AddKeyedSingleton<IMediaServerClient, GraphQlMediaClient>(MediaServerType.Stash);
-services.AddSingleton<ISubtitleWriter, SrtSubtitleWriter>();
+
+// media pipeline
 services.AddSingleton(sp => sp.GetRequiredService<IOptions<MediaClientOptions>>().Value);
 services.AddSingleton<IMediaTranslationPipeline, MediaTranslationPipeline>();
+
+// audio extractor
+services.AddSingleton<IAudioExtractor, FFmpegAudioExtractor>();
+
+// transcriber decision
+services.Configure<TranscriptionOptions>(configuration.GetSection("Transcription"));
+services.AddSingleton<ITranscriberFactory, TranscriberFactory>();
+services.AddHttpClient("http-client", (sp, client) => {
+    var o = sp.GetRequiredService<IOptions<TranscriptionOptions>>().Value;
+    if (o.Endpoint is not null) client.BaseAddress = o.Endpoint;
+    client.Timeout = o.Timeout;
+});
+services.AddKeyedTransient<ITranscriber>(TranscriberBackend.Http, (sp, _) => {
+    return new HttpWhisperTranscriber(
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient("http-client"),
+        sp.GetService<ILogger<HttpWhisperTranscriber>>()
+    );
+});
+services.AddKeyedTransient<ITranscriber>(TranscriberBackend.Local, (sp, _) => {
+    return new LocalWhisperTranscriber();
+});
+
+// subtitle writer
+services.AddSingleton<ISubtitleWriter, SrtSubtitleWriter>();
 
 // wrapping microsoft di into adapter for spectre
 var registrar = new TypeRegistrar(services);
