@@ -4,6 +4,7 @@ using LocalMediaTranslator.Infrastructure.Services;
 
 namespace LocalMediaTranslator.Tests;
 
+[Trait("Category", "Integration")]
 public class FFmpegAudioExtractorIntegrationTests : IAsyncLifetime {
     private readonly FFmpegAudioExtractor _extractor = new();
     private readonly string _testDir = Path.Combine(Path.GetTempPath(), "LocalMediaTranslatorTests_" + Guid.NewGuid());
