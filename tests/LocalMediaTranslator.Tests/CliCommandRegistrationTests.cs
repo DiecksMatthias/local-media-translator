@@ -6,6 +6,7 @@ using LocalMediaTranslator.Core.Models.Enums;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Spectre.Console.Cli;
+using Spectre.Console.Testing;
 
 namespace LocalMediaTranslator.Tests;
 
@@ -57,6 +58,7 @@ public class CliCommandRegistrationTests {
         var app = new CommandApp(new TypeRegistrar(services));
 
         app.Configure(config => {
+            config.ConfigureConsole(new TestConsole());
             config.AddCommand<TranslateFileCommand>("translate");
             config.AddCommand<DiscoverCommand>("discover");
             config.AddCommand<TranslateSceneCommand>("translate-scene");
