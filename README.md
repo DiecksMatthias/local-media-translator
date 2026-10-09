@@ -15,10 +15,12 @@ translates the cues in batches, and the result lands as an `.srt` next to the vi
 behind an interface, so the transcriber and the translator can be swapped out.
 
 Transcription runs over HTTP against a remote GPU Whisper service (Speaches or another
-faster-whisper deployment). A local Whisper.net backend exists in the code, but it is not wired
-into the CLI yet, so the remote service is the supported path. Translation goes to any
-OpenAI-compatible endpoint, usually a local Ollama instance, with a rolling window of the preceding
-lines passed along as context so tone and speaker references stay consistent across a conversation.
+faster-whisper deployment), or locally through Whisper.net when you point it at a ggml model file.
+Exactly one of the two must be configured: pass `--server-model` for the remote service or
+`--local-model` for a local file, and the backend is picked from whichever is set. Translation goes
+to any OpenAI-compatible endpoint, usually a local Ollama instance, with a rolling window of the
+preceding lines passed along as context so tone and speaker references stay consistent across a
+conversation.
 
 The transcription settings are tuned against Whisper's habit of inventing dialogue. VAD filtering
 drops non-speech windows before decoding, `condition_on_previous_text=false` stops a bad guess from
@@ -75,8 +77,8 @@ dotnet run --project src/LocalMediaTranslator.Cli -- translate path/to/video.mp4
 | Option | Shorthand | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `<INPUT_PATH>` | — | Path to the video or audio file | *Required* |
-| `--local-model` | `-m` | Path to a local ggml Whisper model. Not wired into the CLI yet | — |
-| `--server-model` | — | Model name on the remote Whisper server | From config |
+| `--local-model` | `-m` | Path to a local ggml Whisper model. Selects the local backend | — |
+| `--server-model` | — | Model name on the remote Whisper server. Selects the remote backend | From config |
 | `--dual-language` | `-d` | Stack the original text above the translation | `false` |
 | `--output` | `-o` | Output `.srt` path | Next to the input |
 
@@ -120,8 +122,8 @@ dotnet run --project src/LocalMediaTranslator.Cli -- translate-scene 12345 --dua
 | `--dual-language` | `-d` | Stack the original text above the translation | `false` |
 | `--rescan` | `-r` | Trigger a metadata rescan after the subtitles are written | `false` |
 | `--output` | `-o` | Output `.srt` path | Next to the video |
-| `--local-model` | `-m` | Path to a local ggml Whisper model. Not wired into the CLI yet | — |
-| `--server-model` | — | Model name on the remote Whisper server | From config |
+| `--local-model` | `-m` | Path to a local ggml Whisper model. Selects the local backend | — |
+| `--server-model` | — | Model name on the remote Whisper server. Selects the remote backend | From config |
 
 ## Testing
 

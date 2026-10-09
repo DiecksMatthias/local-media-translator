@@ -14,7 +14,11 @@ using Microsoft.Extensions.Logging;
 var configuration = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
-    .AddUserSecrets<Program>(optional: true)
+    .AddJsonFile("appsettings.local.json", optional: true)
+    .AddEnvironmentVariables()
+// #if DEBUG
+//     .AddUserSecrets<Program>(optional: true)
+// #endif
     .Build();
 var services = new ServiceCollection();
 
@@ -83,5 +87,8 @@ app.Configure(config => {
     config.AddCommand<TranslateSceneCommand>("translate-scene")
         .WithDescription("Translates a scene by ID from the media server and optionally triggers a rescan")
         .WithExample(["translate-scene", "12345", "--dual-language", "--rescan"]);
+    config.AddCommand<SetCommand>("set")
+        .WithDescription("Set a configuration value in appsettings.local.json")
+        .WithExample(["set", "Transcription:ServerModel", "large-v3"]);
 });
 return await app.RunAsync(args);

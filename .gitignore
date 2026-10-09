@@ -486,3 +486,4 @@ $RECYCLE.BIN/
 *.wav
 PROJECT_TRACKING.md
 .hermes/
+appsettings.local.json
