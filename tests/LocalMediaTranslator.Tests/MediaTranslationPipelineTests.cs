@@ -32,6 +32,19 @@ public class MediaTranslationPipelineTests {
         public Task UnloadAsync(CancellationToken cs = default) => Task.CompletedTask;
     }
 
+    private class FakeTranscriberFactory : ITranscriberFactory {
+        private readonly ITranscriber _transcriber;
+        private readonly TranscriberBackend _backend;
+
+        public FakeTranscriberFactory(ITranscriber transcriber, TranscriberBackend backend = TranscriberBackend.Http) {
+            _transcriber = transcriber;
+            _backend = backend;
+        }
+
+        public TranscriberSelection Create(TranscriptionOptions options)
+            => new(_backend, _transcriber);
+    }
+
     private class FakeTranslator : ITranslator {
         public IReadOnlyList<SubtitleItem>? LastReceivedItems { get; private set; }
 
@@ -75,7 +88,7 @@ public class MediaTranslationPipelineTests {
 
         var pipeline = new MediaTranslationPipeline(
             extractor,
-            transcriber,
+            new FakeTranscriberFactory(transcriber),
             translator,
             writer,
             Options.Create(new TranslationOptions()),
@@ -131,7 +144,7 @@ public class MediaTranslationPipelineTests {
 
         var pipeline = new MediaTranslationPipeline(
             extractor,
-            transcriber,
+            new FakeTranscriberFactory(transcriber),
             translator,
             writer,
             Options.Create(new TranslationOptions()),
@@ -165,7 +178,7 @@ public class MediaTranslationPipelineTests {
 
         var pipeline = new MediaTranslationPipeline(
             extractor,
-            transcriber,
+            new FakeTranscriberFactory(transcriber),
             translator,
             writer,
             Options.Create(new TranslationOptions()),

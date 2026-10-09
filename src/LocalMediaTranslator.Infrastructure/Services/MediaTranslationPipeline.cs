@@ -10,15 +10,15 @@ namespace LocalMediaTranslator.Infrastructure.Services;
 public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
     private static readonly Regex InCueRepetitionRegex = new(@"([^、,。\s!！?？]+[、,。\s!！?？]*)\1{2,}", RegexOptions.Compiled);
     private readonly IAudioExtractor _audioExtractor;
-    private readonly ITranscriber _transcriber;
+    private readonly ITranscriberFactory _transcriberFactory;
     private readonly ITranslator _translator;
     private readonly ISubtitleWriter _subtitleWriter;
     private readonly IOptions<TranslationOptions> _translationOptions;
     private readonly IOptions<TranscriptionOptions> _transcribeOptions;
 
-    public MediaTranslationPipeline(IAudioExtractor audioExtractor, ITranscriber transcriber, ITranslator translator, ISubtitleWriter subtitleWriter, IOptions<TranslationOptions> translationOptions, IOptions<TranscriptionOptions> transcribeOptions) {
+    public MediaTranslationPipeline(IAudioExtractor audioExtractor, ITranscriberFactory transcriberFactory, ITranslator translator, ISubtitleWriter subtitleWriter, IOptions<TranslationOptions> translationOptions, IOptions<TranscriptionOptions> transcribeOptions) {
         _audioExtractor = audioExtractor;
-        _transcriber = transcriber;
+        _transcriberFactory = transcriberFactory;
         _translator = translator;
         _subtitleWriter = subtitleWriter;
         _translationOptions = translationOptions;
@@ -43,20 +43,22 @@ public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
                 Language = _transcribeOptions.Value.Language,
                 Temperature = _transcribeOptions.Value.Temperature
             };
+            var selection = _transcriberFactory.Create(transcribeOptions);
+            var transcriber = selection.Transcriber;
 
             var subtitleItems = new List<SubtitleItem>();
 
             // addition message before transcibing on a http connection because otherwises the process might seem stuck
-            if (_transcriber is not LocalWhisperTranscriber)
+            if (selection.Backend == TranscriberBackend.Http)
                 progress?.Report(new PipelineProgressReport(PipelineStep.Transcribing, Percentage: null, Message: "Transcribing audio (Whisper on remote GPU)..."));
 
-            await foreach (var item in _transcriber.TranscribeAsync(tempAudioPath, transcribeOptions, cs)) {
+            await foreach (var item in transcriber.TranscribeAsync(tempAudioPath, transcribeOptions, cs)) {
                 subtitleItems.Add(item);
                 progress?.Report(new PipelineProgressReport(PipelineStep.Transcribing, Percentage: null, Message: $"Transcribing audio (Whisper) - {subtitleItems.Count} cues"));
             }
 
             // flush out the transcribe model from VRAM so ollama has access to the whole gpu
-            await _transcriber.UnloadAsync(cs);
+            await transcriber.UnloadAsync(cs);
             progress?.Report(new PipelineProgressReport(PipelineStep.Transcribing, Percentage: 100, Message: $"Transcribing audio (Whisper) - {subtitleItems.Count} cues"));
 
             if (subtitleItems.Count == 0) {
