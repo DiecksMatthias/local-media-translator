@@ -127,8 +127,8 @@ dotnet run --project src/LocalMediaTranslator.Cli -- translate-scene 12345 --dua
 
 ## Testing
 
-The suite has 100 tests. Unit tests mock the HTTP handlers; integration tests shell out to real
-ffmpeg and download a Whisper ggml model.
+Unit tests mock the HTTP handlers; integration tests shell out to real ffmpeg and 
+download a Whisper ggml model.
 
 The integration tests carry `Category=Integration`, so the fast offline run skips them:
 
