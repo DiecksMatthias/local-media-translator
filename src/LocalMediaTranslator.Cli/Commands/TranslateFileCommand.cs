@@ -94,8 +94,7 @@ public class TranslateFileCommand : AsyncCommand<TranslateFileSettings> {
             }
             AnsiConsole.MarkupLine($"[green]Successfully generated subtitles:[/] [bold]{Markup.Escape(resultSrtPath)}[/]");
             return 0;
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             AnsiConsole.MarkupLine($"[red]Error during pipeline execution:[/] {Markup.Escape(ex.Message)}");
             return 1;
         }

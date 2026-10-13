@@ -125,8 +125,7 @@ public class MediaTranslationPipelineTests {
 
             Assert.NotNull(writer.LastWrittenTrack);
             Assert.Equal(3, writer.LastWrittenTrack.Items.Count);
-        }
-        finally {
+        } finally {
             if (File.Exists(tempOutput)) File.Delete(tempOutput);
         }
     }
@@ -205,8 +204,7 @@ public class MediaTranslationPipelineTests {
             Assert.Equal(1, translator.LastReceivedItems[0].Index);
             Assert.Equal("痛い痛い 大丈夫ですか", translator.LastReceivedItems[1].OriginalText);
             Assert.Equal(2, translator.LastReceivedItems[1].Index);
-        }
-        finally {
+        } finally {
             if (File.Exists(tempOutput)) File.Delete(tempOutput);
         }
     }

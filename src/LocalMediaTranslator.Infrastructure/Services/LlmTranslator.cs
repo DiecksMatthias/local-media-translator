@@ -72,15 +72,12 @@ public class LlmTranslator : ITranslator {
                 // add freshly translated items to the history so they can lead as context for the next batch
                 contextHistory.AddRange(batch);
                 consecutiveFailures = 0;
-            }
-            catch (OperationCanceledException) when (cs.IsCancellationRequested) {
+            } catch (OperationCanceledException) when (cs.IsCancellationRequested) {
                 throw;
-            }
-            catch (HttpRequestException ex) when (IsFatal(ex)) {
+            } catch (HttpRequestException ex) when (IsFatal(ex)) {
                 _logger.LogError("Ollama encountered an Error: {message} - HTTP {statuscode}", ex.Message, ex.StatusCode);
                 throw;
-            }
-            catch (Exception ex) when (ex is JsonException or HttpRequestException or TaskCanceledException) {
+            } catch (Exception ex) when (ex is JsonException or HttpRequestException or TaskCanceledException) {
                 foreach (var item in batch) {
                     if (item.TranslatedText is null) {
                         item.TranslatedText = item.OriginalText;
@@ -271,8 +268,7 @@ public class LlmTranslator : ITranslator {
                     }
                 }
             }
-        }
-        catch {
+        } catch {
 
         }
     }

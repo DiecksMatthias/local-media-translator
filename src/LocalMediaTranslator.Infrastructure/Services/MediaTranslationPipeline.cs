@@ -89,8 +89,7 @@ public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
                     // only allow two repeats at most
                     if (consecutiveCount > 2)
                         continue;
-                }
-                else {
+                } else {
                     consecutiveCount = 1;
                 }
 
@@ -139,8 +138,7 @@ public partial class MediaTranslationPipeline : IMediaTranslationPipeline {
                 await _subtitleWriter.WriteAsync(track, fileStream, dualLanguage: options.DualLanguage, cs: cs);
                 progress?.Report(new PipelineProgressReport(PipelineStep.WritingSubtitles, Percentage: 100, Message: "Writing subtitle file"));
             }
-        }
-        finally {
+        } finally {
             if (File.Exists(tempAudioPath))
                 File.Delete(tempAudioPath);
         }

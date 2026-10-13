@@ -41,8 +41,7 @@ public class FFmpegAudioExtractor : IAudioExtractor {
                             })
                             .WithStandardErrorPipe(PipeTarget.ToStringBuilder(stdErrBuffer))
                             .ExecuteAsync(cs);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             throw new InvalidOperationException($"FFmpeg failed to extract audio from '{videoPath}'. Output:\n{stdErrBuffer}", e);
         }
         if (!File.Exists(outputPath))

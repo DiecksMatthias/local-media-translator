@@ -3,3 +3,7 @@ root = true
 [*.cs]
 # Place opening brace on the same line (K&R style)
 csharp_new_line_before_open_brace = none
+# Keep else/catch/finally on the same line as the closing brace (K&R style)
+csharp_new_line_before_else = false
+csharp_new_line_before_catch = false
+csharp_new_line_before_finally = false

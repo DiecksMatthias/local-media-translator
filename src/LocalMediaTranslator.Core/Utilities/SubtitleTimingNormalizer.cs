@@ -66,8 +66,7 @@ public static class SubtitleTimingNormalizer {
             if (gap <= maxGapMs && totalDuration <= maxCombinedSeconds && !endWithPunctuation) {
                 current.End = next.End;
                 current.OriginalText = $"{current.OriginalText} {next.OriginalText}".Trim();
-            }
-            else {
+            } else {
                 merged.Add(current);
                 current = next;
             }
