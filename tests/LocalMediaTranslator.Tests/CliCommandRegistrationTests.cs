@@ -86,4 +86,41 @@ public class CliCommandRegistrationTests {
 
         Assert.Equal(0, exitCode);
     }
+
+    /// <summary>
+    /// GetService returns null for an unregistered type; GetRequiredService
+    /// throws. This matters because Spectre renders a null resolve as the
+    /// opaque "Could not resolve type 'X'" with NO inner exception at all --
+    /// there is nothing for a handler to walk. The resolver must throw so a
+    /// real cause always exists to surface.
+    /// </summary>
+    [Fact]
+    public void Resolve_WhenTypeUnregistered_ThrowsInsteadOfReturningNull() {
+        var resolver = new TypeResolver(new ServiceCollection().BuildServiceProvider());
+
+        Assert.Throws<InvalidOperationException>(() => resolver.Resolve(typeof(Boom)));
+    }
+
+    /// <summary>
+    /// A constructor that throws must propagate its own exception, not a
+    /// generic resolution failure. The top-level handler walks this chain to
+    /// print the root cause.
+    /// </summary>
+    [Fact]
+    public void Resolve_WhenConstructorThrows_PropagatesTheRealException() {
+        var services = new ServiceCollection();
+        // Factory form, not `new Boom()`: the constructor must only run when
+        // the service is resolved, which is the moment under test.
+        services.AddSingleton<Boom>(_ => new Boom());
+
+        using var resolver = new TypeResolver(services.BuildServiceProvider());
+
+        var ex = Assert.Throws<InvalidOperationException>(() => resolver.Resolve(typeof(Boom)));
+
+        Assert.Contains("constructor exploded", ex.ToString(), StringComparison.Ordinal);
+    }
+
+    private sealed class Boom {
+        public Boom() => throw new InvalidOperationException("constructor exploded");
+    }
 }

@@ -1,4 +1,5 @@
-﻿using Spectre.Console.Cli;
+﻿using Spectre.Console;
+using Spectre.Console.Cli;
 using LocalMediaTranslator.Cli.Commands;
 using LocalMediaTranslator.Cli.Helper;
 using LocalMediaTranslator.Core.Interfaces;
@@ -86,6 +87,7 @@ var registrar = new TypeRegistrar(services);
 
 var app = new CommandApp(registrar);
 app.Configure(config => {
+    config.Settings.PropagateExceptions = true;
     config.AddCommand<TranslateFileCommand>("translate")
         .WithDescription("Translates a single video file on disk")
         .WithExample(["translate", "video.mp4", "--dual-language"]);
@@ -99,4 +101,17 @@ app.Configure(config => {
         .WithDescription("Set a configuration value in appsettings.local.json")
         .WithExample(["set", "Transcription:ServerModel", "large-v3"]);
 });
-return await app.RunAsync(args);
+
+// Spectre wraps resolver and command failures in its own CommandAppException and
+// prints only that line, hiding the real cause -- a malformed config value binding
+// into an options class surfaced exactly this way. Render the whole chain instead.
+try {
+    return await app.RunAsync(args);
+} catch (Exception ex) {
+    var root = ex;
+    while (root.InnerException is not null) root = root.InnerException;
+    AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
+    if (!ReferenceEquals(root, ex))
+        AnsiConsole.MarkupLine($"[red]Root cause:[/] {Markup.Escape($"{root.GetType().Name}: {root.Message}")}");
+    return 1;
+}
