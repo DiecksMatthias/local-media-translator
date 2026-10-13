@@ -103,8 +103,7 @@ public class HttpWhisperTranscriberTests {
             Assert.Equal(TimeSpan.FromSeconds(4.5), results[1].End);
 
             Assert.Equal(1, handler.CallCount);
-        }
-        finally {
+        } finally {
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
     }
@@ -136,8 +135,7 @@ public class HttpWhisperTranscriberTests {
             Assert.Contains("2.0", handler.LastRequestBody);
             Assert.Contains("name=repetition_penalty", handler.LastRequestBody);
             Assert.Contains("1.2", handler.LastRequestBody);
-        }
-        finally {
+        } finally {
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
     }
@@ -159,8 +157,7 @@ public class HttpWhisperTranscriberTests {
             });
 
             Assert.Contains("Remote Whisper GPU out of memory", ex.Message);
-        }
-        finally {
+        } finally {
             if (File.Exists(tempFile)) File.Delete(tempFile);
         }
     }

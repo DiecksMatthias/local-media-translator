@@ -114,8 +114,7 @@ public class TranslateSceneCommand : AsyncCommand<TranslateSceneSettings> {
                 }
             }
             return 0;
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             AnsiConsole.MarkupLine($"[red]Error during pipeline execution:[/] {Markup.Escape(ex.Message)}");
             return 1;
         }

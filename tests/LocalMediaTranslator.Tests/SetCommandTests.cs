@@ -1,4 +1,5 @@
 using LocalMediaTranslator.Cli.Commands;
+using LocalMediaTranslator.Cli.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console.Cli;
 using Spectre.Console.Testing;
@@ -89,6 +90,92 @@ public class SetCommandTests {
         var ex = Record.Exception(() => _command.ValidateSectionAndProperty(key));
 
         Assert.Null(ex);
+    }
+
+    // ── ResolveTargetFile ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void ResolveTargetFile_FlagSet_ReturnsFlagValue() {
+        var settings = new SetSettings { File = "/tmp/custom.json" };
+
+        var result = SetCommand.ResolveTargetFile(settings);
+
+        Assert.Equal("/tmp/custom.json", result);
+    }
+
+    [Fact]
+    public void ResolveTargetFile_FlagBeatsEnvVar_ReturnsFlagValue() {
+        var original = Environment.GetEnvironmentVariable("LMT_CONFIG_FILE");
+        try {
+            Environment.SetEnvironmentVariable("LMT_CONFIG_FILE", "/tmp/from-env.json");
+            var settings = new SetSettings { File = "/tmp/from-flag.json" };
+
+            var result = SetCommand.ResolveTargetFile(settings);
+
+            Assert.Equal("/tmp/from-flag.json", result);
+        } finally {
+            Environment.SetEnvironmentVariable("LMT_CONFIG_FILE", original);
+        }
+    }
+
+    [Fact]
+    public void ResolveTargetFile_EnvVarOnly_ReturnsEnvValue() {
+        var original = Environment.GetEnvironmentVariable("LMT_CONFIG_FILE");
+        try {
+            Environment.SetEnvironmentVariable("LMT_CONFIG_FILE", "/tmp/from-env.json");
+            var settings = new SetSettings();
+
+            var result = SetCommand.ResolveTargetFile(settings);
+
+            Assert.Equal("/tmp/from-env.json", result);
+        } finally {
+            Environment.SetEnvironmentVariable("LMT_CONFIG_FILE", original);
+        }
+    }
+
+    [Fact]
+    public void ResolveTargetFile_NeitherSet_FallsBackToBaseDirectory() {
+        var original = Environment.GetEnvironmentVariable("LMT_CONFIG_FILE");
+        try {
+            Environment.SetEnvironmentVariable("LMT_CONFIG_FILE", null);
+            var settings = new SetSettings();
+
+            var result = SetCommand.ResolveTargetFile(settings);
+
+            Assert.Equal(Path.Combine(AppContext.BaseDirectory, "appsettings.local.json"), result);
+        } finally {
+            Environment.SetEnvironmentVariable("LMT_CONFIG_FILE", original);
+        }
+    }
+
+    [Fact]
+    public void ResolveTargetFile_WhitespaceFlag_FallsThroughToEnvVar() {
+        var original = Environment.GetEnvironmentVariable("LMT_CONFIG_FILE");
+        try {
+            Environment.SetEnvironmentVariable("LMT_CONFIG_FILE", "/tmp/from-env.json");
+            var settings = new SetSettings { File = "   " };
+
+            var result = SetCommand.ResolveTargetFile(settings);
+
+            Assert.Equal("/tmp/from-env.json", result);
+        } finally {
+            Environment.SetEnvironmentVariable("LMT_CONFIG_FILE", original);
+        }
+    }
+
+    [Fact]
+    public void ResolveTargetFile_WhitespaceEnvVar_FallsBackToBaseDirectory() {
+        var original = Environment.GetEnvironmentVariable("LMT_CONFIG_FILE");
+        try {
+            Environment.SetEnvironmentVariable("LMT_CONFIG_FILE", "   ");
+            var settings = new SetSettings();
+
+            var result = SetCommand.ResolveTargetFile(settings);
+
+            Assert.Equal(Path.Combine(AppContext.BaseDirectory, "appsettings.local.json"), result);
+        } finally {
+            Environment.SetEnvironmentVariable("LMT_CONFIG_FILE", original);
+        }
     }
 
     // ── WriteConfig ────────────────────────────────────────────────────────────

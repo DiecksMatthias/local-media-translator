@@ -142,12 +142,10 @@ public class HttpWhisperTranscriber : ITranscriber {
                 if (!delResponse.IsSuccessStatusCode)
                     _logger?.LogWarning("Failed to unload model {modelId}: HTTP {statusCode}", modelId, delResponse.StatusCode);
             }
-        }
-        catch (OperationCanceledException) {
+        } catch (OperationCanceledException) {
             // throw to console
             throw;
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             _logger?.LogWarning(ex, "Whisper model unload encountered an unexpected error");
         }
     }

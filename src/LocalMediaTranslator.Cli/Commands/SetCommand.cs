@@ -11,6 +11,7 @@ namespace LocalMediaTranslator.Cli.Commands;
 
 public class SetCommand : AsyncCommand<SetSettings> {
     internal record struct ParsedKey(string Section, string Property, string? DictKey);
+    private const string ConfigFileEnvVar = "LMT_CONFIG_FILE";
     public override async Task<int> ExecuteAsync(CommandContext context, SetSettings settings, CancellationToken cancellationToken) {
         if (string.IsNullOrWhiteSpace(settings.Key)) {
             AnsiConsole.MarkupLine("[red]Error:[/] Key cannot be empty");
@@ -40,9 +41,16 @@ public class SetCommand : AsyncCommand<SetSettings> {
             return 1;
         }
 
-        var targetFile = Path.Combine(AppContext.BaseDirectory, "appsettings.local.json");
+        var targetFile = ResolveTargetFile(settings);
         WriteConfig(targetFile, parsedKey, settings.Value);
         return 0;
+    }
+
+    internal static string ResolveTargetFile(SetSettings settings) {
+        var envFile = Environment.GetEnvironmentVariable(ConfigFileEnvVar);
+        return !string.IsNullOrWhiteSpace(settings.File) ? settings.File
+            : !string.IsNullOrWhiteSpace(envFile) ? envFile
+            : Path.Combine(AppContext.BaseDirectory, "appsettings.local.json");
     }
 
     internal static ParsedKey ParseKey(string[] input) => new ParsedKey(input[0], input[1], input.Length > 2 ? input[2] : null);

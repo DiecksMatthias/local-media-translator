@@ -125,6 +125,19 @@ dotnet run --project src/LocalMediaTranslator.Cli -- translate-scene 12345 --dua
 | `--local-model` | `-m` | Path to a local ggml Whisper model. Selects the local backend | — |
 | `--server-model` | — | Model name on the remote Whisper server. Selects the remote backend | From config |
 
+### Set a configuration value
+
+Writes one key into `appsettings.local.json`, the gitignored overlay on top of `appsettings.json`. Keys are validated against the options classes first, so a typo is caught instead of writing a key nothing reads. The known sections are `Transcription`, `Translation`, and `MediaServer`; a third segment addresses a dictionary entry, e.g. `MediaServer:PathMappings:/data`.
+
+```bash
+dotnet run --project src/LocalMediaTranslator.Cli -- set Transcription:ServerModel large-v3
+
+# Write somewhere else, e.g. a mounted volume in a container
+dotnet run --project src/LocalMediaTranslator.Cli -- set Transcription:ServerModel large-v3 --file /config/appsettings.local.json
+```
+
+The target file resolves in order: `--file`, then the `LMT_CONFIG_FILE` environment variable, then `appsettings.local.json` next to the binary. A relative `--file` path is resolved by the process, not against the binary directory.
+
 ## Testing
 
 Unit tests mock the HTTP handlers; integration tests shell out to real ffmpeg and 
@@ -148,7 +161,8 @@ network access to fetch the model.
 Coverage includes pipeline deduplication and cue merging, the HTTP Whisper transcriber
 (anti-hallucination parameters, VAD, CUDA OOM handling, model unloading), the LLM translator
 (resilient parsing, batching, context windows, failure handling), the GraphQL media client, path
-transformer, subtitle timing normalization, and CLI command registration.
+transformer, subtitle timing normalization, config-target resolution, and CLI command
+registration.
 
 ## License
 
