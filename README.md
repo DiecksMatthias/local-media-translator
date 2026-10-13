@@ -56,8 +56,10 @@ LocalMediaTranslator/
 - A Whisper HTTP endpoint (Speaches or another faster-whisper deployment) with a model loaded
 - An OpenAI-compatible completion endpoint for translation, such as Ollama
 
-Endpoints and API keys are read from `appsettings.json` and can be overridden with .NET user
-secrets, which is the intended place for anything that should not be committed.
+Endpoints and API keys are read from `appsettings.json`. Per-machine overrides go in
+`appsettings.local.json` (gitignored) or environment variables, which is where anything
+that should not be committed belongs. The `set` command writes the local file; env vars
+take precedence over it.
 
 ## Usage
 
@@ -137,6 +139,14 @@ dotnet run --project src/LocalMediaTranslator.Cli -- set Transcription:ServerMod
 ```
 
 The target file resolves in order: `--file`, then the `LMT_CONFIG_FILE` environment variable, then `appsettings.local.json` next to the binary. A relative `--file` path is resolved by the process, not against the binary directory.
+
+### Run in a container
+
+A Dockerfile at the repo root builds an image with the .NET runtime and ffmpeg bundled, so the host only needs Docker and reachable Whisper and LLM endpoints. It is built locally for now, not pulled from a registry. Configuration comes from environment variables, using a double underscore where the JSON config nests (`Transcription__Endpoint=...`), or from a mounted `appsettings.local.json` when `LMT_CONFIG_FILE` points at it — `set` writes to whichever target is configured, so values set inside a container persist.
+
+The media library mounts at `/media`. The image seeds the config volume with the `/data` → `/media` path mapping, so scene file paths resolve inside the container with no first-run setup; a different prefix is a one-time `set` away. Run as your own uid (`--user $(id -u):$(id -g)`, or the matching `LMT_UID` in the compose file) so the `.srt` files written next to the videos land with your ownership instead of root's.
+
+`compose.yaml` wraps the same image into a per-command container: copy `.env.example` to `.env`, fill in the endpoints and paths, then `docker compose run --rm cli <command>`. Each invocation starts a fresh container from the current image and removes it on exit, so `--build` after source changes keeps it current. The config file lives in a named volume rather than a bind mount, so values written by `set` persist between runs without any host directory setup — Docker initializes the volume with the image's ownership, which is what keeps `set` working as an arbitrary uid.
 
 ## Testing
 
