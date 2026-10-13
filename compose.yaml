@@ -1,0 +1,35 @@
+name: local-media-translator
+
+services:
+  cli:
+    image: ${LMT_IMAGE:-local-media-translator:dev}
+    build:
+      context: .
+    # No command override: the entrypoint (dotnet LocalMediaTranslator.Cli.dll)
+    # runs with the args `run` appends, so `run --rm cli discover` executes
+    # the discover subcommand.
+    user: "${LMT_UID:-1000}:${LMT_GID:-1000}"
+    environment:
+      LMT_CONFIG_FILE: /config/appsettings.local.json
+    env_file:
+      - .env
+    volumes:
+      # Media library. Map the media server's path prefix onto /media with
+      # `run --rm cli set MediaServer:PathMappings:<prefix> /media` (persists in
+      # the config volume below). The image seeds the /data -> /media mapping.
+      - ${LMT_MEDIA_DIR:?set LMT_MEDIA_DIR in .env}:/media
+      # Named volume, not a bind mount: Docker initializes it with the image's
+      # /config ownership, so `set` works as any uid. Inspect it with
+      # `docker compose run --rm cli cat /config/appsettings.local.json`.
+      - lmt-config:/config
+
+networks:
+  # Existing network to attach to - e.g. the one your media server lives on,
+  # so container-name endpoints resolve. Must already exist;
+  # create one with `docker network create` or use an existing network's name.
+  default:
+    name: ${LMT_NETWORK:?set LMT_NETWORK in .env}
+    external: true
+
+volumes:
+  lmt-config:
