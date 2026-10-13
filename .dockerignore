@@ -1,0 +1,36 @@
+# Build output
+**/bin/
+**/obj/
+**/out/
+publish/
+
+# Git and IDE state
+.git/
+.gitignore
+.vscode/
+.idea/
+*.user
+
+# Local config and secrets. appsettings.local.json is gitignored for the repo
+# but the build context ignores .gitignore, so it must be excluded here too.
+appsettings.local.json
+.env
+
+# Local Whisper model weights
+models/
+
+# Docs and plans
+.hermes/
+*.md
+!README.md
+LICENSE
+
+# Tests are not part of the published output
+tests/
+
+# Docker's own files
+Dockerfile
+.dockerignore
+compose.yaml
+.env.example
+config/

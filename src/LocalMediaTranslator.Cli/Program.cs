@@ -14,7 +14,15 @@ using Microsoft.Extensions.Logging;
 var configuration = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
-    .AddJsonFile("appsettings.local.json", optional: true)
+    // When LMT_CONFIG_FILE is set (the same variable SetCommand's writer
+    // honours), the local config is read from there instead of next to the
+    // binary - in a container, typically a mounted volume. Without this the
+    // mounted file would be silently ignored.
+    .AddJsonFile(
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("LMT_CONFIG_FILE"))
+            ? Environment.GetEnvironmentVariable("LMT_CONFIG_FILE")!
+            : "appsettings.local.json",
+        optional: true)
     .AddEnvironmentVariables()
 // #if DEBUG
 //     .AddUserSecrets<Program>(optional: true)

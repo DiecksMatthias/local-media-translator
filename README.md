@@ -56,8 +56,10 @@ LocalMediaTranslator/
 - A Whisper HTTP endpoint (Speaches or another faster-whisper deployment) with a model loaded
 - An OpenAI-compatible completion endpoint for translation, such as Ollama
 
-Endpoints and API keys are read from `appsettings.json` and can be overridden with .NET user
-secrets, which is the intended place for anything that should not be committed.
+Endpoints and API keys are read from `appsettings.json`. Per-machine overrides go in
+`appsettings.local.json` (gitignored) or environment variables, which is where anything
+that should not be committed belongs. The `set` command writes the local file; env vars
+take precedence over it.
 
 ## Usage
 
@@ -137,6 +139,58 @@ dotnet run --project src/LocalMediaTranslator.Cli -- set Transcription:ServerMod
 ```
 
 The target file resolves in order: `--file`, then the `LMT_CONFIG_FILE` environment variable, then `appsettings.local.json` next to the binary. A relative `--file` path is resolved by the process, not against the binary directory.
+
+### Run in a container
+
+A `Dockerfile` at the repo root builds an image with the .NET runtime, ffmpeg, and the Whisper
+native runtime bundled, so the host only needs Docker plus reachable Whisper and LLM endpoints.
+The image is built locally for now; nothing is published to a registry yet.
+
+```bash
+docker build -t local-media-translator:dev .
+```
+
+Then pass the endpoints in as environment variables, using a double underscore wherever the
+JSON config nests:
+
+```bash
+docker run --rm -it --network host --user $(id -u):$(id -g) \
+  -e Transcription__ServerModel=Systran/faster-whisper-large-v3 \
+  -e Transcription__Endpoint=http://your-whisper-host:8000 \
+  -e Translation__Endpoint=http://your-llm-host:11434 \
+  -e MediaServer__Endpoint=http://your-media-server:9999/graphql \
+  -e MediaServer__ApiKey=... \
+  -v /path/to/your/media:/media \
+  local-media-translator:dev translate /media/video.mp4
+```
+
+Two things about that command are easy to get wrong. The media library mounts at `/media`
+inside the container, so file arguments are container paths (`/media/video.mp4`), not the host
+path you would type outside Docker. And `--user $(id -u):$(id -g)` matters: without it the
+container runs as root and the `.srt` it writes next to the video lands root-owned. The image
+seeds its config volume with a `/data` → `/media` path mapping so media-server paths resolve
+with no first-run setup; a different prefix is a one-time `set` away.
+
+Instead of a long `docker run` every time, `compose.yaml` wraps the same image into a per-command
+container. Copy `.env.example` to `.env`, fill in the endpoints, the uid/gid the container runs
+as, the host directory to mount at `/media`, and the name of an existing Docker network (the one
+your media server lives on, so container-name endpoints resolve — compose will not create it):
+
+```bash
+cp .env.example .env    # edit the endpoints, LMT_UID/LMT_GID, LMT_MEDIA_DIR, LMT_NETWORK
+
+docker compose run --rm cli discover --missing-captions-only
+docker compose run --rm --build cli translate /media/video.mp4
+```
+
+Each invocation starts a fresh container from the current image and removes it on exit; `--build`
+rebuilds after source changes. Config lives in a named volume rather than a bind mount, so values
+written by `set` persist between runs — Docker initializes the volume with the image's ownership,
+which is what keeps `set` working as an arbitrary uid.
+
+In both forms, `LMT_CONFIG_FILE` points at the config file the CLI reads and writes
+(`/config/appsettings.local.json` inside the container). Values set inside a container persist
+through it; environment variables take precedence over the file, so `.env` always wins.
 
 ## Testing
 
