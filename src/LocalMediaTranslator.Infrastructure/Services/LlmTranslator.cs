@@ -54,6 +54,13 @@ public class LlmTranslator : ITranslator {
                     }
                 }
 
+                var missing = batch.Where(x => !translationMap.ContainsKey(x.Index)).ToList();
+                foreach (var item in missing) {
+                    _logger.LogWarning("Untranslated Item - Index: {index}", item.Index);
+                    failedItems++;
+                }
+
+
                 // Match by ID
                 foreach (var item in batch) {
                     if (translationMap.TryGetValue(item.Index, out var translatedText)) {
