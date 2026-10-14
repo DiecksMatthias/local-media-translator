@@ -47,33 +47,92 @@ public class LlmTranslator : ITranslator {
                 // pass last 3 items as context
                 var recentContext = contextHistory.TakeLast(3).ToList();
                 var translations = await TranslateBatchAsync(batch, recentContext, options, cs);
+
+                // Duplicate IDs: the map keeps the first occurrence and the second
+                // translation would vanish silently without this.
+                var duplicateIds = translations
+                    .GroupBy(t => t.Id)
+                    .Where(g => g.Count() > 1)
+                    .Select(g => g.Key)
+                    .ToList();
+                foreach (var dup in duplicateIds) {
+                    _logger.LogWarning("Duplicate translation ID {id} in LLM response - keeping the first occurrence", dup);
+                }
+
                 var translationMap = new Dictionary<int, string>();
                 foreach (var t in translations) {
                     if (!string.IsNullOrWhiteSpace(t.Translation)) {
-                        translationMap[t.Id] = t.Translation;
+                        translationMap.TryAdd(t.Id, t.Translation);
                     }
                 }
 
-                var missing = batch.Where(x => !translationMap.ContainsKey(x.Index)).ToList();
-                foreach (var item in missing) {
-                    _logger.LogWarning("Untranslated Item - Index: {index}", item.Index);
-                    failedItems++;
-                }
+                // Classify the response before assigning anything (see the decision
+                // tree in .hermes/plans/subtitle-timing-fix-plan.md, Fix 1.3):
+                //
+                //   1. count matches, zero ID overlap  -> renumbered-but-complete:
+                //      positional fallback is the only recovery, and the count match
+                //      makes it safe. Log it - the LLM ignored the numbering scheme.
+                //   2. short response, IDs overlap, max returned ID == max batch ID
+                //      -> genuine drop: the LLM skipped a line but kept the real
+                //      numbering. Trust the ID matches; the absent IDs are the misses.
+                //   3. short response, IDs overlap, max returned ID < max batch ID
+                //      -> renumber-and-drop suspected. BUT: an end-truncated
+                //      response (LLM hit its token limit after lines 1,2 of 1,2,3)
+                //      is structurally IDENTICAL to a renumbered drop, and at
+                //      Temperature 0 a whole-batch re-ask deterministically returns
+                //      the same truncated output - so discarding here would throw
+                //      away correct translations on every truncation, the documented
+                //      common failure. The matches are trusted; the missing IDs are
+                //      re-asked individually (see the retry below), which is the
+                //      only recovery that actually changes the input.
+                //   4. short response, zero ID overlap -> nothing salvageable by ID;
+                //      every item is missing.
+                var batchIds = batch.Select(x => x.Index).ToHashSet();
+                var returnedIds = translations.Select(t => t.Id).ToHashSet();
+                var overlap = batchIds.Intersect(returnedIds);
+                var countMatches = translations.Count == batch.Length;
 
-
-                // Match by ID
-                foreach (var item in batch) {
-                    if (translationMap.TryGetValue(item.Index, out var translatedText)) {
-                        item.TranslatedText = translatedText;
-                    }
-                }
-
-                // Positional fallback if IDs were missing/misaligned but item count matches
-                if (batch.All(x => x.TranslatedText == null) && translations.Count == batch.Length) {
+                if (countMatches && !overlap.Any()) {
+                    _logger.LogWarning(
+                        "LLM returned {count} translations with no matching IDs for this batch - assigning positionally",
+                        translations.Count);
                     for (int i = 0; i < batch.Length; i++) {
                         if (!string.IsNullOrWhiteSpace(translations[i].Translation)) {
                             batch[i].TranslatedText = translations[i].Translation;
                         }
+                    }
+                } else {
+                    // Match by ID (branches 2, 3, 4)
+                    foreach (var item in batch) {
+                        if (translationMap.TryGetValue(item.Index, out var translatedText)) {
+                            item.TranslatedText = translatedText;
+                        }
+                    }
+                }
+
+                // Account for unmatched items AFTER assignment, so the positional
+                // fallback's recovered cues are not counted as failures.
+                var unmatched = batch.Where(x => string.IsNullOrWhiteSpace(x.TranslatedText)).ToList();
+
+                // Retry the missing IDs individually. Different input, so at
+                // Temperature 0 this actually returns something new. A failed
+                // re-ask does not increment consecutiveFailures.
+                foreach (var item in unmatched) {
+                    for (var attempt = 0; attempt < options.MaxRetries; attempt++) {
+                        var retried = await RetrySingleItemAsync(item, recentContext, options, cs);
+                        if (retried is not null) {
+                            item.TranslatedText = retried;
+                            break;
+                        }
+                    }
+                }
+
+                // Final accounting: whatever is still untranslated is counted and
+                // logged with its source text so the miss is diagnosable.
+                foreach (var item in batch) {
+                    if (string.IsNullOrWhiteSpace(item.TranslatedText)) {
+                        _logger.LogWarning("Untranslated Item - Index: {index}, Text: {text}", item.Index, item.OriginalText);
+                        failedItems++;
                     }
                 }
                 // add freshly translated items to the history so they can lead as context for the next batch
@@ -117,18 +176,19 @@ public class LlmTranslator : ITranslator {
             progress?.Report(processCount);
         }
 
-        if (failedBatches > 0) {
+        if (failedBatches > 0 || failedItems > 0) {
             if (options.FailOnPartialFailure)
                 throw new LlmTranslationException(
                     failedBatches,
                     totalBatches,
                     failedItems,
                     LlmTranslationFailureExceptionReasons.FailOnPartialFailure,
-                    $"Aborted: {failedBatches} Batches failed to translate");
-            _logger.LogWarning(
-                "{failed} of {total} batches fell back to source text - the output is partially untranslated.",
-                failedBatches,
-                totalBatches);
+                    $"Aborted: {failedBatches} of {totalBatches} batches failed, {failedItems} cues left untranslated.");
+
+            if (failedBatches > 0)
+                _logger.LogWarning("{failed} of {total} batches fell back to source text - the output is partially untranslated.", failedBatches, totalBatches);
+            if (failedItems > 0)
+                _logger.LogWarning("{failed} cues were left untranslated after batch translation and retries - the output is partially untranslated.", failedItems);
         }
         return items;
     }
@@ -175,6 +235,30 @@ public class LlmTranslator : ITranslator {
             throw new JsonException("LLM returned empty completion content.");
 
         return ParseResponseItems(contentString);
+    }
+
+    // Re-asks a single untranslated cue in its own small prompt. At Temperature 0
+    // this genuinely changes the model's input, which is the only way a retry can
+    // return something the truncated batch response did not. Returns null when the
+    // re-ask fails or comes back empty - the caller's accounting loop owns the
+    // failure count, so a failed re-ask must never touch consecutiveFailures.
+    private async Task<string?> RetrySingleItemAsync(
+        SubtitleItem item,
+        IReadOnlyList<SubtitleItem> context,
+        TranslationOptions options,
+        CancellationToken cs) {
+        try {
+            var retried = await TranslateBatchAsync([item], context, options, cs);
+            // Match by ID, never positionally: a single-item retry whose response
+            // carries a foreign ID is garbled or stale (e.g. a truncated JSON array
+            // that happens to salvage an earlier line's text) and must not be
+            // assigned to this cue.
+            var match = retried.FirstOrDefault(t => t.Id == item.Index && !string.IsNullOrWhiteSpace(t.Translation));
+            return match?.Translation;
+        } catch (Exception ex) when (ex is JsonException or HttpRequestException or TaskCanceledException) {
+            _logger.LogWarning("Retry for Item - Index: {index} failed ({error})", item.Index, ex.GetType().Name);
+            return null;
+        }
     }
 
     private static List<TranslationResponseItem> ParseResponseItems(string content) {

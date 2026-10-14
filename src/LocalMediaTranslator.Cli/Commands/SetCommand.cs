@@ -27,12 +27,10 @@ public class SetCommand : AsyncCommand<SetSettings> {
         ParsedKey parsedKey = ParseKey(parts);
         try {
             ValidateSectionAndProperty(parsedKey);
-        }
-        catch (InvalidOperationException ex) {
+        } catch (InvalidOperationException ex) {
             AnsiConsole.MarkupLine($"[red]Error during setting variables:[/] {Markup.Escape(ex.Message)}");
             return 1;
-        }
-        catch (Exception ex) {
+        } catch (Exception ex) {
             AnsiConsole.MarkupLine($"[red]Unexpected Error during setting variables:[/] {Markup.Escape(ex.Message)}");
             return 1;
         }

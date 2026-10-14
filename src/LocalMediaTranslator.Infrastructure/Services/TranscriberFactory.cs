@@ -17,7 +17,7 @@ public class TranscriberFactory : ITranscriberFactory {
         var transcriber = _provider.GetRequiredKeyedService<ITranscriber>(backend);
         return new TranscriberSelection(backend, transcriber);
     }
-    
+
     internal static TranscriberBackend SelectBackend(TranscriptionOptions options) {
         bool hasLocal = !string.IsNullOrWhiteSpace(options.LocalModelPath);
         bool hasServer = !string.IsNullOrWhiteSpace(options.ServerModel);
